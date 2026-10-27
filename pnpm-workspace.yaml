@@ -1,0 +1,8 @@
+packages:
+  - "."
+  - "packages/*"
+allowBuilds:
+  "@parcel/watcher": true
+  "@scarf/scarf": true
+  sharp: true
+  unrs-resolver: true

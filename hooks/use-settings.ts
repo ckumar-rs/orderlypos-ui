@@ -1,0 +1,146 @@
+"use client";
+
+import type {
+  BranchSettingsDto,
+  RestaurantSettingsDto,
+  TaxMode,
+  TaxRegime,
+} from "@nodedr-restaurant/types";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+
+export interface RestaurantSettings {
+  id: string;
+  name: string;
+  legalName: string | null;
+  logoUrl: string | null;
+  currency: string;
+  timezone: string;
+  upiVpa: string | null;
+  upiPayeeName: string | null;
+  demoMode: boolean;
+  loyaltyPointValue: string;
+  loyaltyEarnPerCurrency: number;
+  referralPoints?: number;
+  birthdayDiscountPercent?: string;
+  fssaiNumber?: string | null;
+  receiptEmail?: string | null;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpUser?: string | null;
+  smtpFrom?: string | null;
+  smtpSecure?: boolean;
+  smtpConfigured?: boolean;
+  tallyEnabled?: boolean;
+  tallyCompanyName?: string | null;
+  tallyHost?: string | null;
+  tallyPort?: number | null;
+  tallyUseHttps?: boolean;
+  tallyLedgers?: { sourceKey: string; ledgerName: string }[];
+  syncEnabled?: boolean;
+  syncHqUrl?: string | null;
+  syncHqTokenConfigured?: boolean;
+  syncIntervalSec?: number;
+  payCash?: boolean;
+  payCard?: boolean;
+  payUpi?: boolean;
+  payOther?: boolean;
+  receiptWhatsApp?: boolean;
+  receiptEmailEnabled?: boolean;
+  receiptPrint?: boolean;
+  employeeDiscountPercent?: string | number;
+  reservationMessage?: string | null;
+  waCloudEnabled?: boolean;
+  waCloudBaseUrl?: string | null;
+  waCloudPhoneNumberId?: string | null;
+  waCloudTemplateName?: string | null;
+  waCloudTemplateLang?: string | null;
+  waCloudTokenConfigured?: boolean;
+  smsEnabled?: boolean;
+  smsProvider?: string | null;
+  smsBaseUrl?: string | null;
+  smsSenderId?: string | null;
+  smsCountryPrefix?: string | null;
+  smsApiKeyConfigured?: boolean;
+  clvHorizonMonths?: number;
+  clvMarginPercent?: string | number;
+  aiEnabled?: boolean;
+  aiProvider?: string | null;
+  aiBaseUrl?: string | null;
+  aiModel?: string | null;
+  aiTokenConfigured?: boolean;
+  aiHistoryDays?: number;
+  aiHorizonDays?: number;
+  aiLeadTimeDays?: number | null;
+  weatherBaseUrl?: string | null;
+  weatherApiKeyConfigured?: boolean;
+}
+
+export interface BranchSettings {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  gstNumber: string | null;
+  gstStateCode?: string | null;
+  serviceChargePercent?: string;
+  country: string;
+  taxRegime: TaxRegime;
+  taxMode: TaxMode;
+  taxLabel: string | null;
+  taxId: string | null;
+  autoConfirmOrders: boolean;
+  autoConfirmReservations: boolean;
+  kioskToken: string | null;
+  kioskDineInEnabled: boolean;
+  kioskTakeawayEnabled: boolean;
+  printerPaperWidthMm: 58 | 80;
+  printerCodepage: "CP437" | "CP850" | "CP858" | "CP1252";
+  printerColumns: number | null;
+  printerConnection: "USB" | "NETWORK";
+  printerHost: string | null;
+  printerPort: number;
+}
+
+export function useSettings(branchId: string | null) {
+  return useQuery({
+    queryKey: ["settings", branchId],
+    queryFn: () =>
+      api.get<{ restaurant: RestaurantSettings; branch: BranchSettings }>(
+        `/settings?branchId=${branchId}`,
+      ),
+    enabled: !!branchId,
+  });
+}
+
+export function useUpdateRestaurantSettings(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: RestaurantSettingsDto) => api.patch("/settings/restaurant", dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", branchId] }),
+  });
+}
+
+export function useUploadRestaurantLogo() {
+  return useMutation({
+    mutationFn: (file: File) => api.upload<{ url: string }>("/settings/restaurant/logo", file),
+  });
+}
+
+export function useUpdateBranchSettings(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: BranchSettingsDto) =>
+      api.patch(`/settings/branch?branchId=${branchId}`, dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", branchId] }),
+  });
+}
+
+export function useSetKiosk(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (action: "enable" | "rotate" | "disable") =>
+      api.post<{ kioskToken: string | null }>(`/settings/kiosk/${action}?branchId=${branchId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", branchId] }),
+  });
+}
