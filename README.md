@@ -9,3 +9,11 @@ Set these before the Vercel build:
 - `NEXT_PUBLIC_SITE_URL` — `https://orderlypos-ui.vercel.app`
 
 The API and the Neon database live in the backend repository.
+
+Open these on the admin host, not on the public website:
+
+- Kiosk: `https://orderlypos-ui.vercel.app/kiosk/<token>`
+- Guest phone page: `https://orderlypos-ui.vercel.app/guest/<token>`
+- Customer display: `https://orderlypos-ui.vercel.app/customer-display`
+
+Settings shows the kiosk and guest addresses after the kiosk is enabled. The till page opens the customer display. Both use this site’s origin, so they keep working when the page is served from `https://orderlypos-ui.vercel.app`.
