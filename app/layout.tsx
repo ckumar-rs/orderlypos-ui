@@ -17,7 +17,7 @@ const siteDescription =
   "OrderlyPOS is an Agentic Restaurant POS for a cafe, a dining room, a kiosk, or a group of branches. The floor runs service. The same books are checked every five minutes after close.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:1995"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://orderlypos-ui.vercel.app"),
   title: { default: "OrderlyPOS | Agentic restaurant POS", template: "%s | OrderlyPOS" },
   description: siteDescription,
   openGraph: {

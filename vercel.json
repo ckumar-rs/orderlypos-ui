@@ -2,6 +2,8 @@
   "buildCommand": "pnpm --filter @nodedr-restaurant/types build && next build",
   "installCommand": "pnpm install --frozen-lockfile",
   "env": {
-    "BACKEND_URL": "https://orderlypos-backend.onrender.com"
+    "BACKEND_URL": "https://orderlypos-backend.onrender.com",
+    "NEXT_PUBLIC_WEBSITE_URL": "https://orderlypos-eight.vercel.app",
+    "NEXT_PUBLIC_SITE_URL": "https://orderlypos-ui.vercel.app"
   }
 }
