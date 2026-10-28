@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4001";
+const BACKEND_URL = (
+  process.env.BACKEND_URL ?? "https://orderlypos-backend.onrender.com"
+).replace(/\/$/, "");
 const website = process.env.NEXT_PUBLIC_WEBSITE_URL?.replace(/\/$/, "");
 
 const marketingPages = [
