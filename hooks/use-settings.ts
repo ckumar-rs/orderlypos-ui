@@ -19,6 +19,7 @@ export interface RestaurantSettings {
   upiVpa: string | null;
   upiPayeeName: string | null;
   demoMode: boolean;
+  agentMode?: "HUMAN" | "AUTO";
   loyaltyPointValue: string;
   loyaltyEarnPerCurrency: number;
   referralPoints?: number;

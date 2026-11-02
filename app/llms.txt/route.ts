@@ -4,7 +4,7 @@ export function GET() {
   const origin = siteUrl();
   const body = `# OrderlyPOS
 
-> Agentic restaurant POS from Contrivya. The till, the kitchen, the tables, and the guest kiosk run on a computer in the restaurant. Ask reads that service and does not take a payment. Plans start at ₹499 a month. Creating an account does not charge a card.
+> OrderlyPOS is the restaurant system from Contrivya for the till, the kitchen, the floor, and the guest. A guest orders from a table QR, a kiosk, or a WhatsApp catalog. Ask reads that service and does not take a payment. The owner chooses whether agents draft a change or send it. Plans start at ₹2,999 a month. Creating an account does not charge a card.
 
 OrderlyPOS is for a cafe or food truck, a dining room, a kiosk, or a group of branches.
 
@@ -12,9 +12,9 @@ OrderlyPOS is for a cafe or food truck, a dining room, a kiosk, or a group of br
 
 - [Home](${origin}/orderlyPOS): What the floor does during service and what is checked after close.
 - [Features](${origin}/orderlyPOS/features): Screens from this install, and what each one is for.
-- [Agent](${origin}/orderlyPOS/agent): Ask reads the open branch. A rule can notify the owner every five minutes.
+- [Agent](${origin}/orderlyPOS/agent): Ask reads the open branch. Settings chooses whether a message waits for a person or goes out on its own.
 - [How to use](${origin}/orderlyPOS/how-to-use): From the first table to the cash close.
-- [Pricing](${origin}/orderlyPOS/pricing): Starter ₹499, Growth ₹999, Pro ₹2,499 a month. Yearly billing is 20% less. Enterprise is a quote.
+- [Pricing](${origin}/orderlyPOS/pricing): Starter ₹2,999 or $36, Growth ₹4,999 or $60, Pro ₹6,999 or $84, Enterprise ₹12,999 or $156 a month. Switch INR or USD. Yearly billing is 20% less.
 - [Try now](${origin}/signup): Create an account. A paid plan starts when Contrivya confirms it by email.
 
 ## Company

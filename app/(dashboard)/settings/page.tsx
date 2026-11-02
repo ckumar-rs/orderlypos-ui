@@ -190,6 +190,7 @@ function GeneralSettingsForm({
   const [upiVpa, setUpiVpa] = useState(restaurant.upiVpa ?? "");
   const [upiPayeeName, setUpiPayeeName] = useState(restaurant.upiPayeeName ?? "");
   const [demoMode, setDemoMode] = useState(restaurant.demoMode);
+  const [agentMode, setAgentMode] = useState<"HUMAN" | "AUTO">(restaurant.agentMode === "AUTO" ? "AUTO" : "HUMAN");
   const [loyaltyPointValue, setLoyaltyPointValue] = useState(restaurant.loyaltyPointValue);
   const [loyaltyEarnPerCurrency, setLoyaltyEarnPerCurrency] = useState(
     String(restaurant.loyaltyEarnPerCurrency),
@@ -236,6 +237,7 @@ function GeneralSettingsForm({
         upiVpa: upiVpa.trim() || null,
         upiPayeeName: upiPayeeName.trim() || null,
         demoMode,
+        agentMode,
         loyaltyPointValue: Number(loyaltyPointValue) || 0,
         loyaltyEarnPerCurrency: Number(loyaltyEarnPerCurrency) || 1,
         referralPoints: Number(referralPoints) || 0,
@@ -467,6 +469,22 @@ function GeneralSettingsForm({
                 maxLength={60}
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="r-agent-mode">How agents run</Label>
+            <Select value={agentMode} onValueChange={(value) => setAgentMode(value === "AUTO" ? "AUTO" : "HUMAN")}>
+              <SelectTrigger id="r-agent-mode" className="w-full max-w-md">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="HUMAN">A person approves each change</SelectItem>
+                <SelectItem value="AUTO">Agents send the change</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Both stay available. A person in the loop keeps the purchase request, the message, and the reservation reminder until someone sends them. Automatic lets the inventory agent email the supplier, the branch rules send email, SMS, WhatsApp, or a webhook, and the reservation reminder go out on their own.
+            </p>
           </div>
 
           <label className="flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-2">

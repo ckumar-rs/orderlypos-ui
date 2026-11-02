@@ -1,20 +1,23 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/layout/logo";
-import { SiteJsonLd } from "@/components/site/site-jsonld";
+import { PageJsonLd, SiteJsonLd } from "@/components/site/site-jsonld";
 
 export function DocPage({
   title,
+  path,
   updated,
   children,
 }: {
   title: string;
+  path: string;
   updated: string;
   children: ReactNode;
 }) {
   return (
     <div className="flex min-h-full flex-col">
       <SiteJsonLd />
+      <PageJsonLd path={path} name={title.replace(/&amp;/g, "&")} />
       <header className="border-b border-border/60 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <Link href="/" className="flex items-center">

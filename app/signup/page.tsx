@@ -50,7 +50,7 @@ export default function SignupPage() {
           <Link href="/">
             <Logo size={52} />
           </Link>
-          <h1 className="sr-only">OrderlyPOS</h1>
+          <h1 className="sr-only">Create a restaurant account</h1>
           <p className="text-sm text-muted-foreground">Set up your restaurant</p>
         </div>
 

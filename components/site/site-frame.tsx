@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/layout/logo";
 import { ReachUs } from "@/components/site/reach-us";
-import { SiteJsonLd } from "@/components/site/site-jsonld";
+import { PageJsonLd, SiteJsonLd } from "@/components/site/site-jsonld";
 import { SiteNav } from "@/components/site/site-nav";
 
 const highlights = [
@@ -66,10 +66,17 @@ const columns = [
   },
 ];
 
-export function SiteFrame({ children }: { children: ReactNode }) {
+export function SiteFrame({
+  children,
+  page,
+}: {
+  children: ReactNode;
+  page: { path: string; name: string };
+}) {
   return (
     <div className="flex min-h-full flex-col bg-background text-foreground">
       <SiteJsonLd />
+      <PageJsonLd path={page.path} name={page.name} />
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto grid h-14 max-w-6xl grid-cols-[auto_auto_1fr] items-center gap-x-3 px-5 sm:px-6 lg:flex lg:gap-6">
           <Link href="/orderlyPOS" className="col-start-1 row-start-1 shrink-0">
@@ -146,7 +153,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
           ))}
         </div>
         <p className="mx-auto max-w-6xl px-5 pb-10 text-xs text-muted-foreground sm:px-6">
-          OrderlyPOS is made by Contrivya. Plans start at ₹499 a month.
+          OrderlyPOS is made by Contrivya. Plans start at ₹2,999 a month.
         </p>
       </footer>
     </div>

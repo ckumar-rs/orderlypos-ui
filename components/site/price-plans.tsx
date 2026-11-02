@@ -3,12 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 
+type Currency = "INR" | "USD";
+
 const plans = [
   {
     name: "Starter",
     who: "Cafes, food trucks, and a first trial",
     lead: "Can begin at no charge while you try it.",
-    monthly: 499,
+    monthly: { INR: 2999, USD: 36 },
     points: ["Basic billing", "A short menu", "1 terminal"],
     href: "/signup",
     featured: false,
@@ -17,7 +19,7 @@ const plans = [
     name: "Growth",
     who: "QSRs and small dining rooms",
     lead: "Everything in Starter, and:",
-    monthly: 999,
+    monthly: { INR: 4999, USD: 60 },
     points: ["Full billing", "Basic reports", "1–2 devices", "Kitchen display basics"],
     href: "/signup",
     featured: false,
@@ -26,7 +28,7 @@ const plans = [
     name: "Pro",
     who: "Self-ordering and a busier service",
     lead: "Everything in Growth, and:",
-    monthly: 2499,
+    monthly: { INR: 6999, USD: 84 },
     points: ["Several devices", "Kiosk ordering", "Inventory and loyalty", "Priority support"],
     href: "/signup",
     featured: true,
@@ -35,7 +37,7 @@ const plans = [
     name: "Enterprise",
     who: "Chains and more than one location",
     lead: "Everything in Pro, and:",
-    monthly: null as number | null,
+    monthly: { INR: 12999, USD: 156 },
     points: ["Central dashboard", "Integrations", "A named contact"],
     href: "mailto:info@contrivya.com?subject=OrderlyPOS%20Enterprise",
     featured: false,
@@ -46,7 +48,11 @@ type Row =
   | { kind: "group"; label: string }
   | { kind: "feature"; label: string; values: [string, string, string, string] };
 
-const rows: Row[] = [
+function comparisonRows(currency: Currency): Row[] {
+  const kiosk = currency === "INR" ? "₹500–₹1,200" : "$6–$14";
+  const license: [string, string, string, string] =
+    currency === "INR" ? ["₹25,000", "₹40,000", "₹60,000", "Quote"] : ["$300", "$480", "$720", "Quote"];
+  return [
   { kind: "group", label: "Service" },
   { kind: "feature", label: "Billing", values: ["Basic", "Full", "Full", "Full"] },
   { kind: "feature", label: "Menu", values: ["Short", "Full", "Full", "Full"] },
@@ -58,7 +64,7 @@ const rows: Row[] = [
   { kind: "feature", label: "Reservations", values: ["—", "✓", "✓", "✓"] },
   { kind: "feature", label: "Kitchen display", values: ["—", "Basics", "Included", "Included"] },
   { kind: "feature", label: "Guest kiosk", values: ["—", "—", "Included", "Included"] },
-  { kind: "feature", label: "Extra kiosk", values: ["—", "—", "₹500–₹1,200", "₹500–₹1,200"] },
+  { kind: "feature", label: "Extra kiosk", values: ["—", "—", kiosk, kiosk] },
   { kind: "group", label: "Books and guests" },
   { kind: "feature", label: "Reports", values: ["—", "Basic", "Full", "Central"] },
   { kind: "feature", label: "Drawer and expenses", values: ["—", "✓", "✓", "✓"] },
@@ -75,9 +81,10 @@ const rows: Row[] = [
   { kind: "feature", label: "Franchise view", values: ["—", "—", "—", "✓"] },
   { kind: "group", label: "Support" },
   { kind: "feature", label: "Support", values: ["Email", "Email", "Priority", "Named contact"] },
-  { kind: "feature", label: "One-time license", values: ["₹25,000", "₹40,000", "₹60,000", "Quote"] },
+  { kind: "feature", label: "One-time license", values: license },
   { kind: "feature", label: "The rate you start on is the rate you keep", values: ["✓", "✓", "✓", "✓"] },
-];
+  ];
+}
 
 const questions = [
   {
@@ -98,11 +105,11 @@ const questions = [
   },
   {
     q: "What about a one-time license?",
-    a: "Pay once, then a yearly support fee quoted by email. Starter is ₹25,000, Growth is ₹40,000, and Pro is ₹60,000.",
+    a: "Pay once, then a yearly support fee quoted by email. Starter is ₹25,000 ($300), Growth is ₹40,000 ($480), and Pro is ₹60,000 ($720).",
   },
   {
     q: "What does an extra kiosk cost?",
-    a: "Each extra self-order screen is ₹500 to ₹1,200 a month, on top of Pro or Enterprise. The guest reviews the order on the kiosk and pays at the counter.",
+    a: "Each extra self-order screen is ₹500 to ₹1,200 ($6 to $14) a month, on top of Pro or Enterprise. The guest reviews the order on the kiosk and pays at the counter.",
   },
   {
     q: "Who do I write to?",
@@ -110,11 +117,13 @@ const questions = [
   },
 ];
 
-const rupee = new Intl.NumberFormat("en-IN", {
-  style: "currency",
-  currency: "INR",
-  maximumFractionDigits: 0,
-});
+function money(amount: number, currency: Currency) {
+  return new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 function perMonth(monthly: number, yearly: boolean) {
   return yearly ? Math.round(monthly * 0.8) : monthly;
@@ -150,6 +159,8 @@ function TryNow({ href, filled }: { href: string; filled?: boolean }) {
 
 export function PricePlans() {
   const [yearly, setYearly] = useState(true);
+  const [currency, setCurrency] = useState<Currency>("INR");
+  const rows = comparisonRows(currency);
 
   return (
     <div>
@@ -172,12 +183,30 @@ export function PricePlans() {
             Yearly
           </button>
         </div>
-        <p className="text-sm text-muted-foreground">Yearly billing is 20% less. That is how most restaurants pay.</p>
+        <div className="inline-flex rounded-md border border-border p-1" role="group" aria-label="Currency">
+          <button
+            type="button"
+            aria-pressed={currency === "INR"}
+            onClick={() => setCurrency("INR")}
+            className={currency === "INR" ? "rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background" : "rounded-md px-3 py-1.5 text-sm text-muted-foreground"}
+          >
+            INR
+          </button>
+          <button
+            type="button"
+            aria-pressed={currency === "USD"}
+            onClick={() => setCurrency("USD")}
+            className={currency === "USD" ? "rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background" : "rounded-md px-3 py-1.5 text-sm text-muted-foreground"}
+          >
+            USD
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">Yearly billing is 20% less. INR and USD are both list prices.</p>
       </div>
 
       <div className="mt-10 grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan) => {
-          const amount = plan.monthly == null ? null : perMonth(plan.monthly, yearly);
+          const amount = perMonth(plan.monthly[currency], yearly);
           return (
             <article key={plan.name} className="flex flex-col bg-background p-6">
               <div className="flex items-center justify-between gap-2">
@@ -187,14 +216,12 @@ export function PricePlans() {
                 ) : null}
               </div>
               <p className="mt-4 text-3xl font-medium tracking-tight tabular-nums">
-                {amount == null ? "From ₹8,000" : rupee.format(amount)}
+                {money(amount, currency)}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {amount == null
-                  ? "a month, quoted for the group"
-                  : yearly
-                    ? `${rupee.format(perYear(plan.monthly!))} billed once a year`
-                    : "a month"}
+                {yearly
+                  ? `${money(perYear(plan.monthly[currency]), currency)} billed once a year`
+                  : "a month"}
               </p>
               <div className="mt-5">
                 <TryNow href={plan.href} filled={plan.featured} />
@@ -215,23 +242,23 @@ export function PricePlans() {
       </div>
 
       <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-        Prices are in rupees, per outlet. Creating an account does not charge a card or turn these limits on.
+        Prices are per outlet. Switch INR or USD for the list in that currency. Creating an account does not charge a card or turn these limits on.
         A paid plan starts when Contrivya confirms it by email.
       </p>
 
       <h2 className="mt-20 text-2xl font-medium tracking-tight sm:text-3xl">Compare features across plans</h2>
-      <div className="mt-6 overflow-x-auto border border-border">
-        <table className="w-full min-w-[52rem] text-left text-sm">
-          <thead className="sticky top-14 bg-background">
+      <div className="mt-6 w-full min-w-0 overflow-x-auto border border-border">
+        <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
+          <thead className="bg-background">
             <tr className="border-b border-border">
-              <th className="px-4 py-3 font-medium">Feature</th>
+              <th scope="col" className="px-4 py-3 text-left font-medium">Feature</th>
               {plans.map((plan) => {
-                const amount = plan.monthly == null ? null : perMonth(plan.monthly, yearly);
+                const amount = perMonth(plan.monthly[currency], yearly);
                 return (
-                  <th key={plan.name} className="px-4 py-3 align-top font-medium">
+                  <th key={plan.name} scope="col" className="px-4 py-3 text-left align-top font-medium">
                     <span className="block">{plan.name}</span>
                     <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                      {amount == null ? "From ₹8,000/mo" : `${rupee.format(amount)}/mo`}
+                      {`${money(amount, currency)}/mo`}
                     </span>
                   </th>
                 );
@@ -241,16 +268,16 @@ export function PricePlans() {
           <tbody>
             {rows.map((row) =>
               row.kind === "group" ? (
-                <tr key={row.label} className="border-b border-border bg-secondary">
-                  <th colSpan={5} className="px-4 py-2 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                <tr key={`group-${row.label}`} className="border-b border-border bg-secondary">
+                  <th colSpan={5} scope="colgroup" className="px-4 py-2 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     {row.label}
                   </th>
                 </tr>
               ) : (
-                <tr key={row.label} className="border-b border-border last:border-0">
-                  <th className="px-4 py-3 font-medium">{row.label}</th>
+                <tr key={`feature-${row.label}`} className="border-b border-border last:border-0">
+                  <th scope="row" className="px-4 py-3 text-left font-medium">{row.label}</th>
                   {row.values.map((value, index) => (
-                    <td key={`${row.label}-${index}`} className="px-4 py-3 text-muted-foreground">
+                    <td key={`${row.label}-${index}`} className="px-4 py-3 text-left text-muted-foreground">
                       <Cell value={value} />
                     </td>
                   ))}
