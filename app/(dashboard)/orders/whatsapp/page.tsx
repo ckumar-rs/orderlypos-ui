@@ -29,7 +29,7 @@ export default function WhatsAppOrdersPage() {
       <OrderSectionNav />
       <div>
         <h1 className="text-2xl font-semibold">WhatsApp orders</h1>
-        <p className="text-sm text-muted-foreground">A message that names a dish becomes a takeaway order waiting to be accepted. The call stays off until this branch has a secret.</p>
+        <p className="text-sm text-muted-foreground">A message that names a dish becomes a takeaway order waiting to be accepted. A WhatsApp catalog cart arrives on this same list. Staff accept it before the kitchen starts, and the cashier confirms payment. The name-matching call stays off until this branch has a secret.</p>
       </div>
       <Card className="flex flex-col gap-2 p-4">
         <p className="text-sm">{data.data?.setup.enabled ? "Intake is on" : "Intake is off"} · {data.data?.setup.webhookPath}</p>

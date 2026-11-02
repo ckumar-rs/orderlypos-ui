@@ -402,8 +402,9 @@ function GstTab({ branchId }: { branchId: string | null }) {
           <Skeleton className="h-24" />
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Based on paid orders in the range, with each bill&rsquo;s discounts applied pro-rata. Use it as a working
-          summary; have your accountant confirm filings.
+          Based on paid orders in the range, with each bill&rsquo;s discounts applied pro-rata. The{" "}
+          <Link href="/gst" className="underline">GST billing</Link> page lists each bill as a tax invoice or a bill of supply.
+          Have your accountant confirm filings.
         </p>
       </Card>
     </div>

@@ -8,6 +8,7 @@ const CONNECTORS = [
   { href: "/settings/payments", name: "Payment gateways", detail: "Razorpay, PhonePe, Paytm, and Stripe stay off until a URL and secret are stored." },
   { href: "/settings/terminals", name: "Card terminals", detail: "Pine Labs, Mosambee, Mswipe, and PAX stay off until a URL and secret are stored." },
   { href: "/settings/food-platforms", name: "Food platforms", detail: "Zomato and Swiggy stay off until a URL and key are stored." },
+  { href: "/settings/whatsapp-catalog", name: "WhatsApp catalog", detail: "A Meta catalog stays off until a phone number id, catalog id, and sealed token are stored." },
   { href: "/settings/fleet", name: "Delivery fleets", detail: "Rapido, Dunzo, and Shadowfax stay off until a URL and key are stored." },
   { href: "/settings/house", name: "House accounts", detail: "Advances and charges for a guest account." },
   { href: "/settings/webhooks", name: "Webhooks", detail: "Signed events with retries." },

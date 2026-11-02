@@ -102,6 +102,44 @@ export function useGst(branchId: string | null, from: string, to: string) {
     enabled: !!branchId,
   });
 }
+
+export interface GstBillingReport {
+  from: string;
+  to: string;
+  branchName: string;
+  gstin: string | null;
+  stateCode: string | null;
+  requirements: { id: string; done: boolean; label: string; detail: string }[];
+  documents: {
+    orderNumber: string;
+    billedAt: string;
+    guestName: string | null;
+    kind: "TAX_INVOICE" | "BILL_OF_SUPPLY";
+    supply: "INTRA" | "INTER";
+    taxable: number;
+    tax: number;
+    cgst: number;
+    sgst: number;
+    utgst: number;
+    igst: number;
+    total: number;
+  }[];
+  creditNotes: { orderNumber: string; amount: number; createdAt: string; taxable: number; cgst: number; sgst: number; utgst: number; igst: number }[];
+  hsn: { code: string; taxable: number; tax: number; total: number }[];
+  rates: GstReport;
+  cgst: number;
+  sgst: number;
+  utgst: number;
+  igst: number;
+}
+
+export function useGstBilling(branchId: string | null, from: string, to: string) {
+  return useQuery({
+    queryKey: ["acct", "gst-billing", branchId, from, to],
+    queryFn: () => api.get<GstBillingReport>(`/accounting/gst/billing?${q(branchId)}&from=${from}&to=${to}`),
+    enabled: !!branchId,
+  });
+}
 export function useBranchOverview(from: string, to: string) {
   return useQuery({
     queryKey: ["acct", "branches", from, to],

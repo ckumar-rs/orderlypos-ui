@@ -29,6 +29,7 @@ const TABS: SettingsTab[] = [
   { label: "Security", href: "/settings/security" },
   { label: "Webhooks", href: "/settings/webhooks", permission: "settings.manage" },
   { label: "Food platforms", href: "/settings/food-platforms", permission: "settings.manage" },
+  { label: "WhatsApp catalog", href: "/settings/whatsapp-catalog", permission: "settings.manage" },
   { label: "Payments", href: "/settings/payments", permission: "settings.manage" },
   { label: "Card terminals", href: "/settings/terminals", permission: "settings.manage" },
   { label: "House accounts", href: "/settings/house", permission: "settings.manage" },
