@@ -43,3 +43,11 @@ next-env.d.ts
 dist/
 
 .turbo/
+/packages/types/node_modules/.bin/tsc
+/packages/types/node_modules/.bin/tsc.CMD
+/packages/types/node_modules/.bin/tsc.ps1
+/packages/types/node_modules/.bin/tsserver
+/packages/types/node_modules/.bin/tsserver.CMD
+/packages/types/node_modules/.bin/tsserver.ps1
+/packages/types/node_modules/typescript
+/packages/types/node_modules/zod
