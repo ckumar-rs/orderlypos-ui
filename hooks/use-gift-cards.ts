@@ -29,6 +29,15 @@ export function useIssueGiftCard(branchId: string | null) {
   });
 }
 
+export function useVoidGiftCard(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<GiftCard>(`/gift-cards/${id}/void?branchId=${branchId}`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gift-cards", branchId] }),
+  });
+}
+
 export async function lookupGiftCard(branchId: string | null, code: string) {
   try {
     return await api.get<GiftCard>(`/gift-cards/${code}?branchId=${branchId}`);
