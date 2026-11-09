@@ -31,6 +31,7 @@ export function SchedulesPanel({
   titles: Record<string, string>;
 }) {
   const qc = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [frequency, setFrequency] = useState<Schedule["frequency"]>("WEEKLY");
   const [format, setFormat] = useState("xlsx");
   const [recipients, setRecipients] = useState("");
@@ -41,19 +42,33 @@ export function SchedulesPanel({
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ["report-schedules"] });
   const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong");
+  const reset = () => {
+    setEditingId(null);
+    setFrequency("WEEKLY");
+    setFormat("xlsx");
+    setRecipients("");
+  };
 
-  const create = useMutation({
-    mutationFn: () =>
-      api.post(`/report-schedules?branchId=${branchId}`, {
-        reportKey,
-        frequency,
-        format,
-        recipients: recipients.split(/[,\s;]+/).filter(Boolean),
-      }),
+  const save = useMutation({
+    mutationFn: () => {
+      const recipientsList = recipients.split(/[,\s;]+/).filter(Boolean);
+      return editingId
+        ? api.put(`/report-schedules/${editingId}?branchId=${branchId}`, {
+            frequency,
+            format,
+            recipients: recipientsList,
+          })
+        : api.post(`/report-schedules?branchId=${branchId}`, {
+            reportKey,
+            frequency,
+            format,
+            recipients: recipientsList,
+          });
+    },
     onSuccess: () => {
-      setRecipients("");
+      toast.success(editingId ? "Schedule updated" : "Schedule created");
+      reset();
       refresh();
-      toast.success("Schedule created");
     },
     onError: (e) => toast.error(msg(e)),
   });
@@ -63,7 +78,10 @@ export function SchedulesPanel({
   });
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/report-schedules/${id}?branchId=${branchId}`),
-    onSuccess: refresh,
+    onSuccess: (_, id) => {
+      if (editingId === id) reset();
+      refresh();
+    },
   });
   const sendNow = useMutation({
     mutationFn: (id: string) => api.post(`/report-schedules/${id}/send?branchId=${branchId}`),
@@ -96,7 +114,14 @@ export function SchedulesPanel({
           <option value="csv">CSV</option>
         </select>
         <Input aria-label="Recipients" className="min-w-64 flex-1" placeholder="owner@cafe.com, accountant@firm.com" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
-        <Button disabled={!recipients.trim() || create.isPending} onClick={() => create.mutate()}>Schedule</Button>
+        <Button disabled={!recipients.trim() || save.isPending} onClick={() => save.mutate()}>
+          {editingId ? "Save" : "Schedule"}
+        </Button>
+        {editingId && (
+          <Button variant="outline" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </div>
       {data && data.schedules.length > 0 && (
         <ul className="flex flex-col divide-y divide-border">
@@ -111,6 +136,18 @@ export function SchedulesPanel({
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(s.id);
+                    setFrequency(s.frequency);
+                    setFormat(s.format);
+                    setRecipients(s.recipients.join(", "));
+                  }}
+                >
+                  Edit
+                </Button>
                 <Button size="sm" variant="outline" disabled={sendNow.isPending} onClick={() => sendNow.mutate(s.id)}>Send now</Button>
                 <Button size="sm" variant="outline" onClick={() => toggle.mutate({ id: s.id, isActive: !s.isActive })}>{s.isActive ? "Pause" : "Resume"}</Button>
                 <Button size="sm" variant="outline" onClick={() => remove.mutate(s.id)}>Delete</Button>

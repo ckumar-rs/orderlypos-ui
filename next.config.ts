@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
-const BACKEND_URL = (
-  process.env.BACKEND_URL ?? "https://orderlypos-backend.onrender.com"
-).replace(/\/$/, "");
-const website = (process.env.NEXT_PUBLIC_WEBSITE_URL ?? "https://orderlypos-eight.vercel.app").replace(/\/$/, "");
+// Browser only ever talks to ONE origin (this Next.js server) — API calls
+// are proxied server-side to the backend. Same reasoning as nodedr-pos:
+// this keeps the session cookie first-party, avoiding the cross-origin
+// cookie fragility that broke that app's very first version. NOTE: Next
+// bakes the rewrite destination at build time, so in Docker this must come
+// from a build ARG, not a runtime env var (see nodedr-pos memory).
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4001";
 
 const marketingPages = [
   "",
@@ -19,32 +22,28 @@ const marketingPages = [
 ];
 
 const nextConfig: NextConfig = {
-  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
+  output: "standalone",
   async redirects() {
-    const toSite = (path: string) => (website ? `${website}${path}` : path);
     return [
       ...marketingPages.map((page) => ({
         source: `/site${page}`,
-        destination: toSite(`/orderlyPOS${page}`),
+        destination: `/orderlyPOS${page}`,
         permanent: false,
       })),
-      { source: "/site/install", destination: toSite("/orderlyPOS/docs"), permanent: false },
-      { source: "/orderlyPOS/install", destination: toSite("/orderlyPOS/docs"), permanent: false },
-      ...(website
-        ? [
-            { source: "/orderlyPOS", destination: `${website}/orderlyPOS`, permanent: false },
-            { source: "/orderlyPOS/:path*", destination: `${website}/orderlyPOS/:path*`, permanent: false },
-            { source: "/contact", destination: `${website}/contact`, permanent: false },
-            { source: "/docs", destination: `${website}/docs`, permanent: false },
-            { source: "/docs/:path*", destination: `${website}/docs/:path*`, permanent: false },
-          ]
-        : []),
+      { source: "/site/install", destination: "/orderlyPOS/docs", permanent: false },
+      { source: "/orderlyPOS/install", destination: "/orderlyPOS/docs", permanent: false },
     ];
   },
+  // socket.io's endpoint is literally "/socket.io/" — the backend 404s on the
+  // slash-less form, so Next must not redirect it.
   skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
+      // Realtime push (socket.io) goes through the same origin too: in
+      // production only this web server is reachable, never the backend's
+      // own port. socket.io starts with long-polling, which proxies fine.
+      // Literal first: an empty :path* would drop the trailing slash.
       { source: "/socket.io/", destination: `${BACKEND_URL}/socket.io/` },
       { source: "/socket.io/:path+", destination: `${BACKEND_URL}/socket.io/:path+` },
     ];

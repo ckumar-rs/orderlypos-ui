@@ -2,7 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, Printer, RefreshCw, WifiOff } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 import { KioskApiError, kioskApi, type KioskMenu } from "@/lib/kiosk-api";
 import { readQueue, writeQueue } from "@/lib/offline-queue";
@@ -157,6 +157,71 @@ export function DoneScreen({
   const [printState, setPrintState] = useState<"idle" | "printing" | "unavailable">("idle");
   const [phone, setPhone] = useState("");
   const [wa, setWa] = useState<"idle" | "sending" | "sent" | "queued" | "waiting" | "failed" | "invalid">("idle");
+  const [paid, setPaid] = useState(confirmation.paid);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMessage, setPayMessage] = useState("");
+  const canPoll =
+    !paid &&
+    confirmation.orderNumber !== "QUEUED" &&
+    Boolean(confirmation.orderNumber);
+
+  useEffect(() => {
+    if (!canPoll) return;
+    onHold(true);
+    let alive = true;
+    const tick = async () => {
+      try {
+        const row = await kioskApi.orderStatus(token, confirmation.orderNumber);
+        if (!alive) return;
+        if (row.paid) {
+          setPaid(true);
+          setPayMessage("Paid — thank you");
+          onHold(false);
+        }
+      } catch {
+        // Keep waiting; the guest may still be on the gateway page.
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [canPoll, confirmation.orderNumber, onHold, token]);
+
+  const startPay = async () => {
+    if (confirmation.orderNumber === "QUEUED") return;
+    setPayBusy(true);
+    setPayMessage("");
+    onHold(true);
+    try {
+      const row = await kioskApi.startPay(token, confirmation.orderNumber);
+      if (row.paid) {
+        setPaid(true);
+        setPayMessage("Paid — thank you");
+        onHold(false);
+        return;
+      }
+      if (row.checkoutUrl) {
+        window.location.assign(row.checkoutUrl);
+        return;
+      }
+      {
+        const cash = menu.pay?.cashLabel?.trim() || "cash";
+        setPayMessage(
+          menu.upi
+            ? `Scan the UPI code, or pay ${cash} at the counter`
+            : `Pay ${cash} at the counter`,
+        );
+      }
+    } catch (err) {
+      setPayMessage(err instanceof Error ? err.message : "Could not start payment");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
   const sendWhatsApp = async () => {
     const digits = phone.replace(/\D/g, "");
     if (!requestId || digits.length < 10 || digits.length > 15) {
@@ -204,7 +269,7 @@ export function DoneScreen({
       createdAt: confirmation.createdAt,
       serviceLabel:
         confirmation.serviceType === "DINE_IN" ? t("kiosk.service.dineIn") : t("kiosk.service.takeaway"),
-      paid: confirmation.paid,
+      paid,
       items: confirmation.items,
       subtotal: confirmation.subtotal,
       taxAmount: confirmation.taxAmount,
@@ -220,7 +285,7 @@ export function DoneScreen({
         taxIncluded: t("kiosk.ticket.taxIncluded"),
         paid: t("kiosk.ticket.paid"),
         notPaid: t("kiosk.ticket.notPaid"),
-        payAtCounter: confirmation.paid ? "" : t("kiosk.ticket.payAtCounter"),
+        payAtCounter: paid ? "" : t("kiosk.ticket.payAtCounter"),
       },
     });
     setPrintState(ok ? "idle" : "unavailable");
@@ -238,13 +303,13 @@ export function DoneScreen({
         <p className="mt-1 text-[1rem] text-muted-foreground tabular-nums">{confirmation.orderNumber}</p>
       </div>
       <p className="text-[1.5rem] font-semibold">
-        {confirmation.paid ? t("kiosk.done.simulated") : t("kiosk.done.pay")}
+        {paid ? "Paid" : t("kiosk.done.pay")}
       </p>
       <p className="text-[1.25rem] tabular-nums">
         {t("kiosk.basket.total")}: <strong>{fmt(confirmation.totalAmount)}</strong>
       </p>
 
-      {menu.upi && confirmation.currency === "INR" && (
+      {!paid && menu.upi && confirmation.currency === "INR" && (
         <div className="flex flex-col items-center gap-2 rounded-2xl bg-white p-4 text-[#17251d]">
           <QRCodeSVG
             value={buildUpiUri({
@@ -258,14 +323,17 @@ export function DoneScreen({
             level="M"
             marginSize={1}
           />
-          <p className="text-[1.2rem] font-semibold">
-            {menu.upi.demo ? t("kiosk.done.upiDemo") : t("kiosk.done.upi")}
-          </p>
-          <p className="max-w-md text-[1rem] text-neutral-600">
-            {menu.upi.demo ? t("kiosk.done.simulateHint") : t("kiosk.done.upiHint")}
-          </p>
+          <p className="text-[1.2rem] font-semibold">{t("kiosk.done.upi")}</p>
+          <p className="max-w-md text-[1rem] text-neutral-600">{t("kiosk.done.upiHint")}</p>
         </div>
       )}
+
+      {!paid && menu.gatewayAvailable && confirmation.orderNumber !== "QUEUED" ? (
+        <KButton large loading={payBusy} onClick={() => void startPay()}>
+          Pay online
+        </KButton>
+      ) : null}
+      {payMessage ? <p className="text-[1.05rem]">{payMessage}</p> : null}
 
 
       {printState === "unavailable" && (

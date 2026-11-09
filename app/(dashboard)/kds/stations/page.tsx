@@ -1,6 +1,5 @@
 "use client";
 
-import { KdsNav } from "@/components/kds/kds-nav";
 import { TicketCard } from "@/components/kds/ticket-card";
 import { QueryError } from "@/components/ui/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,11 +29,7 @@ export default function StationBoardPage() {
 
   return (
     <div className="flex min-h-[calc(100dvh-10rem)] flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Stations</h1>
-        <p className="text-sm text-muted-foreground">One column for each kitchen station</p>
-      </div>
-      <KdsNav />
+      <p className="text-sm text-muted-foreground">One column for each kitchen station</p>
       {tickets.isError ? (
         <QueryError
           error={tickets.error}

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,25 +22,86 @@ export default function BrandsPage() {
     queryKey: ["brands"],
     queryFn: () => api.get<BrandRow[]>("/service/brands"),
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [branchId, setBranchId] = useState("");
   const [brandId, setBrandId] = useState("");
+
+  const reset = () => {
+    setEditingId(null);
+    setName("");
+  };
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return toast.error("Enter a brand name");
+    const req = editingId
+      ? api.patch(`/service/brands/${editingId}`, { name: trimmed })
+      : api.post("/service/brands", { name: trimmed });
+    req
+      .then(() => {
+        toast.success(editingId ? "Brand updated" : "Brand created");
+        reset();
+        qc.invalidateQueries({ queryKey: ["brands"] });
+      })
+      .catch((error) =>
+        toast.error(error instanceof ApiError ? error.message : editingId ? "Could not update" : "Could not create"),
+      );
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-lg font-semibold">Brands</h1>
         <p className="text-sm text-muted-foreground">A brand groups branches. Menus stay on the branch.</p>
       </div>
       <Card className="flex gap-2 p-4">
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Brand name" />
-        <Button type="button" onClick={() => api.post("/service/brands", { name }).then(() => { setName(""); toast.success("Brand created"); qc.invalidateQueries({ queryKey: ["brands"] }); }).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not create"))}>Add</Button>
+        <Button type="button" onClick={submit}>
+          {editingId ? "Save" : "Create"}
+        </Button>
+        {editingId && (
+          <Button type="button" variant="outline" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </Card>
       <div className="grid gap-3 md:grid-cols-2">
         {(brands.data ?? []).map((brand) => (
-          <Card key={brand.id} className="p-4">
+          <Card key={brand.id} className="flex flex-col gap-2 p-4">
             <p className="font-medium">{brand.name}</p>
             <p className="text-sm text-muted-foreground">{brand.branches.map((branch) => branch.name).join(", ") || "No branches"}</p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingId(brand.id);
+                  setName(brand.name);
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!confirm(`Delete ${brand.name}?`)) return;
+                  api
+                    .delete(`/service/brands/${brand.id}`)
+                    .then(() => {
+                      if (editingId === brand.id) reset();
+                      toast.success("Brand deleted");
+                      qc.invalidateQueries({ queryKey: ["brands"] });
+                    })
+                    .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not delete"));
+                }}
+              >
+                Delete
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,11 +15,7 @@ export default function ReservationFollowUpPage() {
   const reservations = useReservations(branchId, today);
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/reservations" className="text-sm text-muted-foreground">Reservations</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Today's follow-up</h1>
-        <p className="text-sm text-muted-foreground">Text sends WhatsApp and SMS when each is turned on in Operations. A no-show charges the guest's house account. Collect deposit records the advance on that account.</p>
-      </div>
+      <p className="text-sm text-muted-foreground">Text sends WhatsApp and SMS when each is turned on in Operations. A no-show charges the guest's house account. Collect deposit records the advance on that account.</p>
       <div className="grid gap-3 md:grid-cols-2">
         {(reservations.data ?? []).map((row) => (
           <Card key={row.id} className="flex flex-col gap-2 p-4">

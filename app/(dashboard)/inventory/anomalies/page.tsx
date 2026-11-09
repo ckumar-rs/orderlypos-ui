@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
 import { api } from "@/lib/api";
@@ -23,7 +22,6 @@ export default function AnomaliesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div>
         <h1 className="text-2xl font-semibold">Anomalies</h1>
         <p className="text-sm text-muted-foreground">

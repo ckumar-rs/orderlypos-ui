@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -68,11 +67,7 @@ export default function TransfersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-        <p className="text-sm text-muted-foreground">Move stock between your branches</p>
-      </div>
-      <InventoryTabs />
+      <p className="text-sm text-muted-foreground">Move stock between your branches</p>
 
       <Card className="flex flex-col gap-4 p-4">
         {noOtherBranch ? (

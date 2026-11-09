@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { PromoNav } from "@/components/marketing/promo-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { flattenCategories, useCategories } from "@/hooks/use-menu";
 import { useBranch } from "@/hooks/use-branch";
-import { useMarketingActions, usePromotions } from "@/hooks/use-marketing";
+import { useMarketingActions, usePromotions, type PromotionRow } from "@/hooks/use-marketing";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +17,8 @@ export default function CategoryDiscountsPage() {
   const { branchId } = useBranch();
   const categories = useCategories(branchId);
   const promotions = usePromotions(branchId);
-  const { createPromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const { createPromotion, updatePromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [value, setValue] = useState("10");
@@ -33,10 +33,57 @@ export default function CategoryDiscountsPage() {
       Number(row.minOrderAmount ?? 0) === 0,
   );
   const flat = flattenCategories(categories.data ?? []);
+  const pending = createPromotion.isPending || updatePromotion.isPending;
+
+  const reset = () => {
+    setEditingId(null);
+    setName("");
+    setCategoryId("");
+    setValue("10");
+  };
+
+  const loadEdit = (row: PromotionRow) => {
+    setEditingId(row.id);
+    setName(row.name);
+    setCategoryId(row.categoryId ?? "");
+    setValue(String(Number(row.value)));
+  };
+
+  const submit = () => {
+    const dto = {
+      name: name.trim(),
+      kind: "PERCENT",
+      value: Number(value),
+      categoryId,
+      allDay: true,
+      daysOfWeek: DAYS,
+      startTime: "00:00",
+      endTime: "23:59",
+    };
+    if (editingId) {
+      updatePromotion.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Category discount updated");
+            reset();
+          },
+          onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not update"),
+        },
+      );
+      return;
+    }
+    createPromotion.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Category discount created");
+        reset();
+      },
+      onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
-      <PromoNav />
       <div>
         <h1 className="text-2xl font-semibold">Category discounts</h1>
         <p className="text-sm text-muted-foreground">
@@ -59,33 +106,16 @@ export default function CategoryDiscountsPage() {
           ))}
         </select>
         <Input inputMode="decimal" placeholder="Percent" value={value} onChange={(e) => setValue(e.target.value)} />
-        <Button
-          type="button"
-          disabled={createPromotion.isPending || !name.trim() || !categoryId}
-          onClick={() =>
-            createPromotion.mutate(
-              {
-                name: name.trim(),
-                kind: "PERCENT",
-                value: Number(value),
-                categoryId,
-                allDay: true,
-                daysOfWeek: DAYS,
-                startTime: "00:00",
-                endTime: "23:59",
-              },
-              {
-                onSuccess: () => {
-                  toast.success("Category discount saved");
-                  setName("");
-                },
-                onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
-              },
-            )
-          }
-        >
-          Save rule
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" disabled={pending || !name.trim() || !categoryId} onClick={submit}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
@@ -104,10 +134,26 @@ export default function CategoryDiscountsPage() {
                 <td className="px-3 py-2">{flat.find((category) => category.id === row.categoryId)?.name ?? "Category"}</td>
                 <td className="px-3 py-2">{Number(row.value)}%</td>
                 <td className="px-3 py-2 text-right">
-                  <Button size="sm" variant="outline" type="button" onClick={() => promotionActive.mutate({ id: row.id, isActive: !row.isActive })}>
+                  <Button size="sm" variant="outline" type="button" onClick={() => loadEdit(row)}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="outline" type="button" className="ml-2" onClick={() => promotionActive.mutate({ id: row.id, isActive: !row.isActive })}>
                     {row.isActive ? "Pause" : "Resume"}
                   </Button>
-                  <Button size="sm" variant="outline" type="button" className="ml-2" onClick={() => confirm(`Delete ${row.name}?`) && deletePromotion.mutate(row.id)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    className="ml-2"
+                    onClick={() => {
+                      if (!confirm(`Delete ${row.name}?`)) return;
+                      deletePromotion.mutate(row.id, {
+                        onSuccess: () => {
+                          if (editingId === row.id) reset();
+                        },
+                      });
+                    }}
+                  >
                     Delete
                   </Button>
                 </td>

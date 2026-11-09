@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { OrderSectionNav } from "@/components/orders/order-section-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
@@ -19,7 +18,6 @@ export default function TransferLinesPage() {
   const source = open.find((order) => order.id === sourceId);
   return (
     <div className="flex flex-col gap-4">
-      <OrderSectionNav />
       <div>
         <h1 className="text-2xl font-semibold">Move a line to another bill</h1>
         <p className="text-sm text-muted-foreground">Both bills stay open. The source bill keeps at least one line.</p>

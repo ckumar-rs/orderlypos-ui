@@ -1,17 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { hasPermission, useCurrentUser } from "@/hooks/use-auth";
 import { useNavBadges } from "@/hooks/use-nav-badges";
 import { useBranch } from "@/hooks/use-branch";
 import { useSettings } from "@/hooks/use-settings";
-import { cn } from "@/lib/utils";
 import { NavDot } from "@/components/layout/nav-dot";
+import { ModuleSectionNav } from "@/components/layout/module-section-nav";
 
 interface SettingsTab {
   label: string;
   href: string;
+  description?: string;
   /** Omit to show the tab to anyone who can reach /settings at all. */
   permission?: string;
   /** Only shown for branches in this country (ISO code). */
@@ -19,35 +18,35 @@ interface SettingsTab {
 }
 
 const TABS: SettingsTab[] = [
-  { label: "General", href: "/settings" },
-  { label: "Staff", href: "/settings/staff", permission: "users.manage" },
-  { label: "Roles", href: "/settings/roles", permission: "roles.manage" },
-  { label: "Audit Log", href: "/settings/audit-log", permission: "audit_log.view" },
-  { label: "Backup", href: "/settings/backup", permission: "backup.manage" },
-  { label: "Updates", href: "/settings/updates", permission: "system.update" },
-  { label: "API Keys", href: "/settings/api-keys" },
-  { label: "Security", href: "/settings/security" },
-  { label: "Webhooks", href: "/settings/webhooks", permission: "settings.manage" },
-  { label: "Food platforms", href: "/settings/food-platforms", permission: "settings.manage" },
-  { label: "WhatsApp catalog", href: "/settings/whatsapp-catalog", permission: "settings.manage" },
-  { label: "Payments", href: "/settings/payments", permission: "settings.manage" },
-  { label: "Card terminals", href: "/settings/terminals", permission: "settings.manage" },
-  { label: "House accounts", href: "/settings/house", permission: "settings.manage" },
-  { label: "Fleet", href: "/settings/fleet", permission: "settings.manage" },
-  { label: "Currencies", href: "/settings/currencies", permission: "settings.manage" },
-  { label: "Brands", href: "/settings/brands", permission: "settings.manage" },
-  { label: "Apps", href: "/settings/apps", permission: "settings.manage" },
-  { label: "Catalog", href: "/settings/catalog", permission: "settings.manage" },
-  { label: "Developer", href: "/settings/developer", permission: "settings.manage" },
-  { label: "Devices", href: "/settings/devices", permission: "settings.manage" },
-  { label: "Network", href: "/settings/network", permission: "settings.manage" },
-  { label: "Fields", href: "/settings/fields", permission: "settings.manage" },
-  { label: "Automation", href: "/settings/automation", permission: "settings.manage" },
-  { label: "VERI*FACTU", href: "/settings/verifactu", permission: "settings.manage", country: "ES" },
+  { label: "Profile", href: "/settings/profile", description: "Your account" },
+  { label: "General", href: "/settings", description: "Restaurant and branch" },
+  { label: "Staff", href: "/settings/staff", permission: "users.manage", description: "Users and access" },
+  { label: "Roles", href: "/settings/roles", permission: "roles.manage", description: "Permissions" },
+  { label: "Audit log", href: "/settings/audit-log", permission: "audit_log.view", description: "Change history" },
+  { label: "Backup", href: "/settings/backup", permission: "backup.manage", description: "Data backup" },
+  { label: "Updates", href: "/settings/updates", permission: "system.update", description: "System updates" },
+  { label: "API keys", href: "/settings/api-keys", description: "Integrations" },
+  { label: "Security", href: "/settings/security", description: "Locks and policies" },
+  { label: "Webhooks", href: "/settings/webhooks", permission: "settings.manage", description: "Event hooks" },
+  { label: "Food platforms", href: "/settings/food-platforms", permission: "settings.manage", description: "Zomato / Swiggy" },
+  { label: "WhatsApp catalog", href: "/settings/whatsapp-catalog", permission: "settings.manage", description: "Catalog sync" },
+  { label: "Payments", href: "/settings/payments", permission: "settings.manage", description: "Pay methods" },
+  { label: "Card terminals", href: "/settings/terminals", permission: "settings.manage", description: "Card devices" },
+  { label: "House accounts", href: "/settings/house", permission: "settings.manage", description: "On-account guests" },
+  { label: "Fleet", href: "/settings/fleet", permission: "settings.manage", description: "Delivery fleet" },
+  { label: "Currencies", href: "/settings/currencies", permission: "settings.manage", description: "Multi-currency" },
+  { label: "Brands", href: "/settings/brands", permission: "settings.manage", description: "Brand profiles" },
+  { label: "Apps", href: "/settings/apps", permission: "settings.manage", description: "Connected apps" },
+  { label: "Catalog", href: "/settings/catalog", permission: "settings.manage", description: "Catalog tools" },
+  { label: "Developer", href: "/settings/developer", permission: "settings.manage", description: "Dev tools" },
+  { label: "Devices", href: "/settings/devices", permission: "settings.manage", description: "POS devices" },
+  { label: "Network", href: "/settings/network", permission: "settings.manage", description: "LAN and offline" },
+  { label: "Fields", href: "/settings/fields", permission: "settings.manage", description: "Custom fields" },
+  { label: "Automation", href: "/settings/automation", permission: "settings.manage", description: "Rules and jobs" },
+  { label: "VERI*FACTU", href: "/settings/verifactu", permission: "settings.manage", country: "ES", description: "Spain fiscal" },
 ];
 
 export function SettingsTabs() {
-  const pathname = usePathname();
   const { data } = useCurrentUser();
   const user = data?.user;
   const badges = useNavBadges();
@@ -58,29 +57,13 @@ export function SettingsTabs() {
     (tab) =>
       (!tab.permission || hasPermission(user, tab.permission)) &&
       (!tab.country || branchCountry === tab.country),
-  );
+  ).map((tab) => ({
+    href: tab.href,
+    label: tab.label,
+    description: tab.description,
+    exact: tab.href === "/settings",
+    endSlot: badges.settingsTabs[tab.href] ? <NavDot className="ml-0" /> : null,
+  }));
 
-  return (
-    <nav className="flex flex-wrap gap-1 border-b border-border">
-      {visibleTabs.map((tab) => {
-        const isActive =
-          tab.href === "/settings" ? pathname === "/settings" : pathname?.startsWith(tab.href);
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={cn(
-              "flex items-center gap-2 border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
-              isActive
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-            {badges.settingsTabs[tab.href] ? <NavDot className="ml-0" /> : null}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ModuleSectionNav title="Settings" items={visibleTabs} />;
 }

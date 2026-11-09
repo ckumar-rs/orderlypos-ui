@@ -1,36 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { ModuleSectionNav } from "@/components/layout/module-section-nav";
 
 const LINKS = [
-  { href: "/tables", label: "Floor" },
-  { href: "/tables/areas", label: "Areas" },
-  { href: "/tables/split", label: "Split a table" },
-  { href: "/tables/move", label: "Move a party" },
-  { href: "/tables/history", label: "History" },
+  { href: "/tables", label: "Floor plan", exact: true, description: "Live table status" },
+  { href: "/tables/areas", label: "Areas", description: "Indoor and outdoor" },
+  { href: "/tables/split", label: "Split", description: "Split a table" },
+  { href: "/tables/move", label: "Move", description: "Move a party" },
+  { href: "/tables/history", label: "History", description: "Table history" },
 ];
 
 export function TableSectionNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="flex flex-wrap gap-2">
-      {LINKS.map((link) => {
-        const active = pathname === link.href;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              "rounded-full px-3 py-1 text-sm",
-              active ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
-            )}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ModuleSectionNav title="Tables" items={LINKS} />;
 }

@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Download, Printer } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -64,18 +63,6 @@ export default function ReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="print:hidden">
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Reports</h1>
-        <p className="text-sm text-muted-foreground">Filter by date, print, export to Excel, PDF or CSV, or email on a schedule</p>
-        <div className="mt-2 flex gap-3 text-sm">
-          <Link href="/reports/floor" className="underline">Floor</Link>
-          <Link href="/reports/attention" className="underline">Attention</Link>
-          <Link href="/reports/saved" className="underline">Saved</Link>
-          <Link href="/reports/bi" className="underline">Business</Link>
-          <Link href="/franchise" className="underline">Franchise</Link>
-        </div>
-      </div>
-
       <Card className="flex flex-col gap-3 p-4 print:hidden">
         <div>
           <h2 className="text-sm font-medium text-foreground">Sales heat map</h2>

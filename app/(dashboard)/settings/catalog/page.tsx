@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Card } from "@/components/ui/card";
 
 const CONNECTORS = [
@@ -19,7 +18,6 @@ const CONNECTORS = [
 export default function ConnectorCatalogPage() {
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-lg font-semibold">Connector catalog</h1>
         <p className="text-sm text-muted-foreground">

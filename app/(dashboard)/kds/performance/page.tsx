@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { KdsNav } from "@/components/kds/kds-nav";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { QueryError } from "@/components/ui/query-error";
@@ -23,13 +22,9 @@ export default function StationReportPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Station report</h1>
-        <p className="text-sm text-muted-foreground">
-          Prep time, delays, tickets per hour, and how many met the dish prep target. The target is 15 minutes when a dish has none.
-        </p>
-      </div>
-      <KdsNav />
+      <p className="text-sm text-muted-foreground">
+        Prep time, delays, tickets per hour, and how many met the dish prep target. The target is 15 minutes when a dish has none.
+      </p>
       <Input className="max-w-xs" type="date" value={date} onChange={(event) => setDate(event.target.value)} aria-label="Date" />
       {report.isError ? (
         <QueryError error={report.error} what="the station report" onRetry={() => void report.refetch()} retrying={report.isFetching} />

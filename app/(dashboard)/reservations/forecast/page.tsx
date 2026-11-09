@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
@@ -25,13 +24,9 @@ export default function ReservationForecastPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/reservations" className="text-sm text-muted-foreground">Reservations</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Reservation forecast</h1>
-        <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
           Expected covers are the average for that weekday over the last eight weeks. No-shows apply that history to bookings that are still open. Table demand is the number of bookings against the tables on the floor.
         </p>
-      </div>
       <Table>
         <TableHeader>
           <TableRow>

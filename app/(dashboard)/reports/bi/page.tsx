@@ -24,10 +24,7 @@ export default function BusinessPage() {
   return (
     <div className="flex flex-col gap-4">
       <Link href="/reports" className="text-sm underline">Reports</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Business</h1>
-        <p className="text-sm text-muted-foreground">Paid bills for the last 14 days.</p>
-      </div>
+      <p className="text-sm text-muted-foreground">Paid bills for the last 14 days.</p>
       <Card className="p-4">
         <p className="text-sm text-muted-foreground">{bi.data?.orders ?? 0} orders · {bi.data?.sales ?? "0.00"}</p>
         <div className="mt-4 flex items-end gap-1">

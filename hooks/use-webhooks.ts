@@ -44,6 +44,11 @@ export function useWebhookActions() {
         api.post<WebhookRow & { secret: string }>("/webhooks", dto),
       onSuccess: done,
     }),
+    update: useMutation({
+      mutationFn: (v: { id: string; dto: { url?: string; events?: string[]; description?: string | null } }) =>
+        api.put<WebhookRow>(`/webhooks/${v.id}`, v.dto),
+      onSuccess: done,
+    }),
     setActive: useMutation({
       mutationFn: (v: { id: string; isActive: boolean }) => api.patch(`/webhooks/${v.id}/active`, { isActive: v.isActive }),
       onSuccess: done,

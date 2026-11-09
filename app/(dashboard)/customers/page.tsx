@@ -6,20 +6,26 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AddCustomerDialog } from "@/components/customers/add-customer-dialog";
-import { CustomerTabs } from "@/components/customers/customer-tabs";
 import { EditCustomerDialog } from "@/components/customers/edit-customer-dialog";
+import { ImportCustomersDialog } from "@/components/customers/import-customers-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBranch } from "@/hooks/use-branch";
-import { useCustomers, useDeleteCustomer, type Customer } from "@/hooks/use-customers";
+import {
+  useCustomers,
+  useDeleteCustomer,
+  useDueFollowUps,
+  type Customer,
+} from "@/hooks/use-customers";
 import { api, ApiError } from "@/lib/api";
 
 export default function CustomersPage() {
   const { branchId } = useBranch();
   const [search, setSearch] = useState("");
   const { data: customers, isLoading } = useCustomers(branchId, search || undefined);
+  const { data: dueFollowUps } = useDueFollowUps(branchId);
   const deleteCustomer = useDeleteCustomer(branchId);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const queryClient = useQueryClient();
@@ -31,19 +37,37 @@ export default function CustomersPage() {
   const [tierName, setTierName] = useState("");
   const [tierPoints, setTierPoints] = useState("0");
   const [tierMultiplier, setTierMultiplier] = useState("1");
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
   const createTier = useMutation({
     mutationFn: () =>
-      api.post(`/customers/tiers?branchId=${branchId}`, {
-        name: tierName,
-        minPoints: Number(tierPoints) || 0,
-        earnMultiplier: Number(tierMultiplier) || 1,
-      }),
+      editingTierId
+        ? api.patch(`/customers/tiers/${editingTierId}?branchId=${branchId}`, {
+            name: tierName,
+            minPoints: Number(tierPoints) || 0,
+            earnMultiplier: Number(tierMultiplier) || 1,
+          })
+        : api.post(`/customers/tiers?branchId=${branchId}`, {
+            name: tierName,
+            minPoints: Number(tierPoints) || 0,
+            earnMultiplier: Number(tierMultiplier) || 1,
+          }),
     onSuccess: () => {
-      toast.success("Tier saved");
+      toast.success(editingTierId ? "Tier updated" : "Tier saved");
       setTierName("");
+      setTierPoints("0");
+      setTierMultiplier("1");
+      setEditingTierId(null);
       queryClient.invalidateQueries({ queryKey: ["customers", "tiers", branchId] });
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not save the tier"),
+  });
+  const deleteTier = useMutation({
+    mutationFn: (id: string) => api.delete(`/customers/tiers/${id}?branchId=${branchId}`),
+    onSuccess: () => {
+      toast.success("Tier removed");
+      queryClient.invalidateQueries({ queryKey: ["customers", "tiers", branchId] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not remove the tier"),
   });
 
   const onDelete = (e: React.MouseEvent, customer: Customer) => {
@@ -59,16 +83,70 @@ export default function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <CustomerTabs />
+      {(dueFollowUps?.length ?? 0) > 0 && (
+        <Card className="flex flex-col gap-2 border-primary/30 p-4">
+          <p className="text-sm font-medium text-foreground">Follow-ups due</p>
+          <p className="text-xs text-muted-foreground">
+            Open reminders for today or earlier — open the guest to mark them done.
+          </p>
+          <ul className="flex flex-col divide-y divide-border">
+            {dueFollowUps!.slice(0, 8).map((f) => (
+              <li key={f.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div>
+                  <Link
+                    href={`/customers/${f.customer.id}`}
+                    className="font-medium text-foreground hover:underline"
+                  >
+                    {f.customer.name ?? f.customer.phone ?? "Guest"}
+                  </Link>
+                  <span className="text-muted-foreground"> · {f.title}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {f.dueAt ? new Date(f.dueAt).toLocaleDateString() : "No date"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card className="flex flex-col gap-3 p-4">
         <p className="text-sm font-medium text-foreground">Membership tiers</p>
         <p className="text-xs text-muted-foreground">
           The highest tier a guest&apos;s points reach is used at checkout. The multiplier changes how fast they earn.
         </p>
         {(tiers ?? []).map((tier) => (
-          <p key={tier.id} className="text-sm text-muted-foreground">
-            {tier.name} · from {tier.minPoints} pts · {Number(tier.earnMultiplier)}×
-          </p>
+          <div key={tier.id} className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>
+              {tier.name} · from {tier.minPoints} pts · {Number(tier.earnMultiplier)}×
+            </span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setEditingTierId(tier.id);
+                  setTierName(tier.name);
+                  setTierPoints(String(tier.minPoints));
+                  setTierMultiplier(String(tier.earnMultiplier));
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => {
+                  if (!confirm(`Remove tier ${tier.name}?`)) return;
+                  deleteTier.mutate(tier.id);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          </div>
         ))}
         <form
           className="grid gap-2 sm:grid-cols-4"
@@ -80,15 +158,30 @@ export default function CustomersPage() {
           <Input aria-label="Tier name" placeholder="Gold" value={tierName} onChange={(e) => setTierName(e.target.value)} required />
           <Input aria-label="Minimum points" type="number" min="0" value={tierPoints} onChange={(e) => setTierPoints(e.target.value)} />
           <Input aria-label="Earn multiplier" type="number" min="0.1" step="0.1" value={tierMultiplier} onChange={(e) => setTierMultiplier(e.target.value)} />
-          <Button type="submit" disabled={createTier.isPending}>Add tier</Button>
+          <div className="flex gap-1">
+            {editingTierId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setEditingTierId(null);
+                  setTierName("");
+                  setTierPoints("0");
+                  setTierMultiplier("1");
+                }}
+              >
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={createTier.isPending}>
+              {editingTierId ? "Save tier" : "Add tier"}
+            </Button>
+          </div>
         </form>
       </Card>
       <RfmCard branchId={branchId} />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Customers</h1>
-          <p className="text-sm text-muted-foreground">Profiles, loyalty, and order history</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ImportCustomersDialog branchId={branchId} />
         <AddCustomerDialog branchId={branchId} />
       </div>
 
@@ -208,6 +301,7 @@ function RfmCard({ branchId }: { branchId: string | null }) {
       >(`/customers/rfm/labels?branchId=${branchId}`),
     enabled: !!branchId,
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [minR, setMinR] = useState("4");
   const [maxR, setMaxR] = useState("5");
@@ -215,9 +309,19 @@ function RfmCard({ branchId }: { branchId: string | null }) {
   const [maxF, setMaxF] = useState("5");
   const [minM, setMinM] = useState("4");
   const [maxM, setMaxM] = useState("5");
+  const resetLabelForm = () => {
+    setEditingId(null);
+    setName("");
+    setMinR("4");
+    setMaxR("5");
+    setMinF("4");
+    setMaxF("5");
+    setMinM("4");
+    setMaxM("5");
+  };
   const createLabel = useMutation({
-    mutationFn: () =>
-      api.post(`/customers/rfm/labels?branchId=${branchId}`, {
+    mutationFn: () => {
+      const body = {
         name,
         minR: Number(minR),
         maxR: Number(maxR),
@@ -225,10 +329,14 @@ function RfmCard({ branchId }: { branchId: string | null }) {
         maxF: Number(maxF),
         minM: Number(minM),
         maxM: Number(maxM),
-      }),
+      };
+      return editingId
+        ? api.patch(`/customers/rfm/labels/${editingId}?branchId=${branchId}`, body)
+        : api.post(`/customers/rfm/labels?branchId=${branchId}`, body);
+    },
     onSuccess: () => {
-      toast.success("RFM label saved");
-      setName("");
+      toast.success(editingId ? "RFM label updated" : "RFM label saved");
+      resetLabelForm();
       queryClient.invalidateQueries({ queryKey: ["customers", "rfm-labels", branchId] });
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not save the label"),
@@ -268,9 +376,28 @@ function RfmCard({ branchId }: { branchId: string | null }) {
             {label.name} · R {label.minR}–{label.maxR} · F {label.minF}–{label.maxF} · M {label.minM}–
             {label.maxM}
           </span>
-          <Button type="button" variant="ghost" size="sm" onClick={() => removeLabel.mutate(label.id)}>
-            Remove
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditingId(label.id);
+                setName(label.name);
+                setMinR(String(label.minR));
+                setMaxR(String(label.maxR));
+                setMinF(String(label.minF));
+                setMaxF(String(label.maxF));
+                setMinM(String(label.minM));
+                setMaxM(String(label.maxM));
+              }}
+            >
+              Edit
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => removeLabel.mutate(label.id)}>
+              Remove
+            </Button>
+          </div>
         </div>
       ))}
       <form
@@ -287,7 +414,16 @@ function RfmCard({ branchId }: { branchId: string | null }) {
         <Input aria-label="Max F" type="number" min="1" max="5" value={maxF} onChange={(e) => setMaxF(e.target.value)} />
         <Input aria-label="Min M" type="number" min="1" max="5" value={minM} onChange={(e) => setMinM(e.target.value)} />
         <Input aria-label="Max M" type="number" min="1" max="5" value={maxM} onChange={(e) => setMaxM(e.target.value)} />
-        <Button type="submit" disabled={createLabel.isPending}>Add label</Button>
+        <div className="flex gap-1">
+          {editingId && (
+            <Button type="button" variant="outline" onClick={resetLabelForm}>
+              Cancel
+            </Button>
+          )}
+          <Button type="submit" disabled={createLabel.isPending}>
+            {editingId ? "Save" : "Add label"}
+          </Button>
+        </div>
       </form>
     </Card>
   );

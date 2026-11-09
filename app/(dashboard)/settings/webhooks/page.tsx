@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useWebhookActions, useWebhookDeliveries, useWebhookEvents, useWebhooks } from "@/hooks/use-webhooks";
+import { useWebhookActions, useWebhookDeliveries, useWebhookEvents, useWebhooks, type WebhookRow } from "@/hooks/use-webhooks";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -41,23 +40,58 @@ function Deliveries({ id }: { id: string }) {
 export default function WebhooksPage() {
   const { data: hooks, isLoading } = useWebhooks();
   const { data: allEvents } = useWebhookEvents();
-  const { create, setActive, remove, test } = useWebhookActions();
+  const { create, update, setActive, remove, test } = useWebhookActions();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [description, setDescription] = useState("");
   const [events, setEvents] = useState<string[]>(["order.paid"]);
   const [secret, setSecret] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const pending = create.isPending || update.isPending;
 
   const toggle = (e: string) => setEvents(events.includes(e) ? events.filter((x) => x !== e) : [...events, e]);
 
+  const reset = () => {
+    setEditingId(null);
+    setUrl("");
+    setDescription("");
+    setEvents(["order.paid"]);
+  };
+
+  const loadEdit = (h: WebhookRow) => {
+    setEditingId(h.id);
+    setUrl(h.url);
+    setDescription(h.description ?? "");
+    setEvents(h.events.length > 0 ? [...h.events] : ["order.paid"]);
+  };
+
+  const submit = () => {
+    const dto = { url: url.trim(), events, description: description.trim() || undefined };
+    if (editingId) {
+      update.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Webhook updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
+        },
+      );
+      return;
+    }
+    create.mutate(dto, {
+      onSuccess: (r) => {
+        toast.success("Webhook created");
+        setSecret(r.secret);
+        reset();
+      },
+      onError: (e) => toast.error(errMsg(e)),
+    });
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-      <SettingsTabs />
-
       <Card className="flex max-w-3xl flex-col gap-4 p-6">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Webhooks</h2>
@@ -98,25 +132,15 @@ export default function WebhooksPage() {
               </button>
             ))}
           </div>
-          <div>
-            <Button
-              disabled={!url.trim() || events.length === 0 || create.isPending}
-              onClick={() =>
-                create.mutate(
-                  { url: url.trim(), events, description: description.trim() || undefined },
-                  {
-                    onSuccess: (r) => {
-                      setSecret(r.secret);
-                      setUrl("");
-                      setDescription("");
-                    },
-                    onError: (e) => toast.error(errMsg(e)),
-                  },
-                )
-              }
-            >
-              Add webhook
+          <div className="flex gap-2">
+            <Button disabled={!url.trim() || events.length === 0 || pending} onClick={submit}>
+              {editingId ? "Save" : "Create"}
             </Button>
+            {editingId && (
+              <Button variant="outline" onClick={reset}>
+                Cancel
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -133,6 +157,9 @@ export default function WebhooksPage() {
                   <p className="text-xs text-muted-foreground">{h.events.join(", ")}{h.description && ` · ${h.description}`}</p>
                 </div>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => loadEdit(h)}>
+                    Edit
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -153,7 +180,20 @@ export default function WebhooksPage() {
                   <Button size="sm" variant="outline" onClick={() => setActive.mutate({ id: h.id, isActive: !h.isActive })}>
                     {h.isActive ? "Pause" : "Resume"}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => confirm("Delete this webhook?") && remove.mutate(h.id)}>Delete</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!confirm("Delete this webhook?")) return;
+                      remove.mutate(h.id, {
+                        onSuccess: () => {
+                          if (editingId === h.id) reset();
+                        },
+                      });
+                    }}
+                  >
+                    Delete
+                  </Button>
                 </div>
               </div>
               {open === h.id && <Deliveries id={h.id} />}

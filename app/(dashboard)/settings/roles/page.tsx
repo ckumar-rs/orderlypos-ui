@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CreateRoleDialog } from "@/components/settings/create-role-dialog";
 import { EditRoleDialog } from "@/components/settings/edit-role-dialog";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,13 +37,6 @@ export default function RolesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-
-      <SettingsTabs />
-
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>

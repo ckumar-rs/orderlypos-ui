@@ -1,7 +1,6 @@
 "use client";
 
 import { NewStockCountDialog } from "@/components/inventory/new-stock-count-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,7 +14,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
-import { usePostStockCount, useStockCount, useStockCounts } from "@/hooks/use-inventory";
+import {
+  useDeleteStockCount,
+  usePostStockCount,
+  useStockCount,
+  useStockCounts,
+} from "@/hooks/use-inventory";
 import { ApiError } from "@/lib/api";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -26,20 +30,13 @@ export default function StockCountsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const { data: detail } = useStockCount(branchId, openId);
   const post = usePostStockCount(branchId);
+  const remove = useDeleteStockCount(branchId);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Physical audit vs what the recipes already deducted
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <NewStockCountDialog branchId={branchId} />
       </div>
-
-      <InventoryTabs />
 
       <Card className="overflow-hidden p-0">
         {isLoading ? (
@@ -75,25 +72,48 @@ export default function StockCountsPage() {
                     {new Date(count.countedAt).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" onClick={() => setOpenId(count.id)}>
-                      Lines
-                    </Button>
-                    {count.status === "DRAFT" && (
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          post.mutate(count.id, {
-                            onSuccess: () => toast.success(`${count.countNumber} posted`),
-                            onError: (err) =>
-                              toast.error(
-                                err instanceof ApiError ? err.message : "Could not post count",
-                              ),
-                          })
-                        }
-                      >
-                        Post
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => setOpenId(count.id)}>
+                        Lines
                       </Button>
-                    )}
+                      {count.status === "DRAFT" && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              post.mutate(count.id, {
+                                onSuccess: () => toast.success(`${count.countNumber} posted`),
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof ApiError ? err.message : "Could not post count",
+                                  ),
+                              })
+                            }
+                          >
+                            Post
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (!window.confirm(`Delete draft ${count.countNumber}?`)) return;
+                              remove.mutate(count.id, {
+                                onSuccess: () => {
+                                  if (openId === count.id) setOpenId(null);
+                                  toast.success(`${count.countNumber} deleted`);
+                                },
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof ApiError ? err.message : "Could not delete count",
+                                  ),
+                              });
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

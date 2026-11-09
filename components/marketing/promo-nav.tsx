@@ -1,35 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { ModuleSectionNav } from "@/components/layout/module-section-nav";
 
 const LINKS = [
-  { href: "/marketing", label: "Coupons and happy hour" },
-  { href: "/marketing/categories", label: "Category discounts" },
-  { href: "/marketing/quantity", label: "Buy and get" },
-  { href: "/marketing/conditions", label: "Conditions" },
+  { href: "/marketing", label: "Coupons & campaigns", exact: true, description: "Codes, happy hour, bulk sends" },
+  { href: "/marketing/categories", label: "Category discounts", description: "Discounts by category" },
+  { href: "/marketing/quantity", label: "Buy and get", description: "Quantity promos" },
+  { href: "/marketing/conditions", label: "Conditions", description: "Promo rules" },
 ];
 
 export function PromoNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="flex flex-wrap gap-2">
-      {LINKS.map((link) => {
-        const active = pathname === link.href;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              "rounded-full px-3 py-1 text-sm",
-              active ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
-            )}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ModuleSectionNav title="Marketing" items={LINKS} />;
 }

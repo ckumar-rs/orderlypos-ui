@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
 import { CreatePoDialog } from "@/components/inventory/create-po-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -15,7 +17,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
-import { usePurchaseOrders, type PurchaseOrder } from "@/hooks/use-inventory";
+import {
+  usePurchaseOrders,
+  useUpdatePurchaseOrderStatus,
+  type PurchaseOrder,
+} from "@/hooks/use-inventory";
+import { ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 
 const STATUS_VARIANT: Record<PurchaseOrder["status"], "default" | "secondary" | "outline" | "destructive"> = {
@@ -29,20 +36,23 @@ const STATUS_VARIANT: Record<PurchaseOrder["status"], "default" | "secondary" | 
 export default function PurchaseOrdersPage() {
   const { branchId } = useBranch();
   const { data: orders, isLoading } = usePurchaseOrders(branchId);
+  const updateStatus = useUpdatePurchaseOrderStatus(branchId);
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Ingredients, recipe costing, purchase orders, and waste
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <CreatePoDialog branchId={branchId} />
       </div>
 
-      <InventoryTabs />
+      <CreatePoDialog
+        branchId={branchId}
+        purchaseOrder={editing}
+        open={!!editing}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      />
 
       <Card className="overflow-hidden p-0">
         {isLoading ? (
@@ -61,11 +71,12 @@ export default function PurchaseOrdersPage() {
                 <TableHead className="text-right">Items</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {orders.map((po) => (
-                <TableRow key={po.id} className="cursor-pointer" data-href={po.id}>
+                <TableRow key={po.id}>
                   <TableCell>
                     <Link
                       href={`/inventory/purchase-orders/${po.id}`}
@@ -82,6 +93,43 @@ export default function PurchaseOrdersPage() {
                   <TableCell className="text-right tabular-nums">{formatCurrency(po.totalAmount)}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(po.createdAt).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      {po.status === "DRAFT" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditing(po)}
+                        >
+                          Edit
+                        </Button>
+                      )}
+                      {(po.status === "DRAFT" || po.status === "SENT") && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={updateStatus.isPending}
+                          onClick={() => {
+                            if (!window.confirm(`Cancel ${po.poNumber}?`)) return;
+                            updateStatus.mutate(
+                              { id: po.id, status: "CANCELLED" },
+                              {
+                                onSuccess: () => toast.success(`${po.poNumber} cancelled`),
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof ApiError ? err.message : "Could not cancel PO",
+                                  ),
+                              },
+                            );
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

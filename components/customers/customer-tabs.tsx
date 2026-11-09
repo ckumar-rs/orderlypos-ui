@@ -1,41 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { ModuleSectionNav } from "@/components/layout/module-section-nav";
 
 const TABS = [
-  { label: "Customers", href: "/customers" },
-  { label: "Analytics", href: "/customers/analytics" },
-  { label: "Loyalty rules", href: "/customers/loyalty" },
-  { label: "Rewards", href: "/customers/rewards" },
-  { label: "Staff discounts", href: "/customers/staff-discounts" },
+  { label: "Customers", href: "/customers", exact: true, description: "Guest list and follow-ups" },
+  { label: "Analytics", href: "/customers/analytics", description: "RFM and visit insights" },
+  { label: "Loyalty rules", href: "/customers/loyalty", description: "Points and tiers" },
+  { label: "Rewards", href: "/customers/rewards", description: "Redeemable rewards" },
+  { label: "Gift cards", href: "/customers/gift-cards", description: "Issue and list gift cards" },
+  { label: "Staff discounts", href: "/customers/staff-discounts", description: "Employee discount rules" },
 ];
 
 export function CustomerTabs() {
-  const pathname = usePathname();
-  return (
-    <nav className="flex flex-wrap gap-1 border-b border-border">
-      {TABS.map((tab) => {
-        const isActive =
-          tab.href === "/customers"
-            ? pathname === "/customers"
-            : pathname === tab.href || pathname?.startsWith(`${tab.href}/`);
-        return (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className={cn(
-              "border-b-2 px-3 pb-3 text-sm font-medium transition-colors",
-              isActive
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ModuleSectionNav title="Customers" items={TABS} />;
 }

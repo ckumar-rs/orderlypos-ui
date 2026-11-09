@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { TableSectionNav } from "@/components/tables/table-section-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useCustomers } from "@/hooks/use-customers";
@@ -30,13 +29,9 @@ export default function MovePartyPage() {
 
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-4">
-      <TableSectionNav />
-      <div>
-        <h1 className="text-2xl font-semibold">Move a party</h1>
-        <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
           The open bill, its guest, and an optional customer profile move together onto a free table.
         </p>
-      </div>
       <Card className="flex flex-col gap-3 p-4">
         <label className="text-sm" htmlFor="party">From</label>
         <select id="party" className="h-10 rounded-md border border-input bg-background px-2" value={orderId} onChange={(e) => setOrderId(e.target.value)}>

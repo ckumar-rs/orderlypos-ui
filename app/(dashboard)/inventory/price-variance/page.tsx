@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,14 +33,9 @@ export default function PriceVariancePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-        <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
           Purchase price variance: GRN actual vs PO and vs the latest quote for that supplier
         </p>
-      </div>
-
-      <InventoryTabs />
 
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col gap-1">

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CustomerTabs } from "@/components/customers/customer-tabs";
+import { CustomerCrmPanel } from "@/components/customers/customer-crm-panel";
 import { RecordFields } from "@/components/fields/record-fields";
 import { EditCustomerDialog } from "@/components/customers/edit-customer-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +45,6 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="flex flex-col gap-6">
-      <CustomerTabs />
       <div className="flex items-start justify-between gap-4">
         <div>
           <Link
@@ -204,6 +203,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           <p className="mt-1 text-sm text-destructive">{customer.allergies}</p>
         </Card>
       )}
+
+      <CustomerCrmPanel branchId={branchId} customerId={customer.id} />
 
       <RecordFields branchId={branchId} entity="CUSTOMER" entityId={customer.id} />
 

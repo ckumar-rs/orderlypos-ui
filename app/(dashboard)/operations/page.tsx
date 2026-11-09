@@ -18,22 +18,44 @@ const CATEGORIES = ["SOP", "CONTRACT", "RECIPE", "PURCHASE", "OTHER"] as const;
 
 function EquipmentTab({ branchId }: { branchId: string | null }) {
   const { data, isLoading } = useEquipment(branchId);
-  const { createEquipment, retireEquipment, logService } = useOpsActions(branchId);
-  const [f, setF] = useState({ name: "", location: "", serviceIntervalDays: "", lastServicedAt: "" });
+  const { createEquipment, updateEquipment, retireEquipment, logService } = useOpsActions(branchId);
+  const blank = { name: "", location: "", serviceIntervalDays: "", lastServicedAt: "" };
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [f, setF] = useState(blank);
+  const pending = createEquipment.isPending || updateEquipment.isPending;
+  const reset = () => {
+    setEditingId(null);
+    setF(blank);
+  };
 
-  const submit = () =>
-    createEquipment.mutate(
-      {
-        name: f.name,
-        location: f.location || undefined,
-        serviceIntervalDays: f.serviceIntervalDays ? Number(f.serviceIntervalDays) : undefined,
-        lastServicedAt: f.lastServicedAt || undefined,
+  const submit = () => {
+    const dto = {
+      name: f.name,
+      location: f.location || undefined,
+      serviceIntervalDays: f.serviceIntervalDays ? Number(f.serviceIntervalDays) : undefined,
+      lastServicedAt: f.lastServicedAt || undefined,
+    };
+    if (editingId) {
+      updateEquipment.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Equipment updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
+        },
+      );
+      return;
+    }
+    createEquipment.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Equipment added");
+        reset();
       },
-      {
-        onSuccess: () => { toast.success("Equipment added"); setF({ name: "", location: "", serviceIntervalDays: "", lastServicedAt: "" }); },
-        onError: (e) => toast.error(errMsg(e)),
-      },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -42,7 +64,16 @@ function EquipmentTab({ branchId }: { branchId: string | null }) {
         <Input placeholder="Location" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} />
         <Input placeholder="Service every (days)" inputMode="numeric" value={f.serviceIntervalDays} onChange={(e) => setF({ ...f, serviceIntervalDays: e.target.value })} />
         <Input type="date" aria-label="Last serviced" value={f.lastServicedAt} onChange={(e) => setF({ ...f, lastServicedAt: e.target.value })} />
-        <Button onClick={submit} disabled={createEquipment.isPending}>Add</Button>
+        <div className="flex gap-2">
+          <Button className="flex-1" onClick={submit} disabled={pending || !f.name.trim()}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <Card className="flex flex-col divide-y divide-border p-2">
         {isLoading ? (
@@ -63,10 +94,36 @@ function EquipmentTab({ branchId }: { branchId: string | null }) {
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(e.id);
+                    setF({
+                      name: e.name,
+                      location: e.location ?? "",
+                      serviceIntervalDays: e.serviceIntervalDays != null ? String(e.serviceIntervalDays) : "",
+                      lastServicedAt: e.lastServicedAt ? e.lastServicedAt.slice(0, 10) : "",
+                    });
+                  }}
+                >
+                  Edit
+                </Button>
                 <Button size="sm" onClick={() => logService.mutate({ id: e.id, servicedAt: today() }, { onSuccess: () => toast.success("Service logged"), onError: (err) => toast.error(errMsg(err)) })}>
                   Serviced today
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => confirm(`Retire ${e.name}?`) && retireEquipment.mutate(e.id)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!confirm(`Retire ${e.name}?`)) return;
+                    retireEquipment.mutate(e.id, {
+                      onSuccess: () => {
+                        if (editingId === e.id) reset();
+                      },
+                    });
+                  }}
+                >
                   Retire
                 </Button>
               </div>

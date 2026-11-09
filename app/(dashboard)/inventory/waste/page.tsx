@@ -1,6 +1,5 @@
 "use client";
 
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { LogWasteDialog } from "@/components/inventory/log-waste-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -28,17 +27,9 @@ export default function WastePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Ingredients, recipe costing, purchase orders, and waste
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <LogWasteDialog branchId={branchId} />
       </div>
-
-      <InventoryTabs />
 
       {typeof totalCost === "number" && logs && logs.length > 0 && (
         <Card className="flex items-center gap-3 p-5">

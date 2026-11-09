@@ -29,6 +29,7 @@ interface BudgetView {
 export function BudgetsTab({ branchId }: { branchId: string | null }) {
   const qc = useQueryClient();
   const [month, setMonth] = useState(thisMonth);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const key = ["acct", "budgets", branchId, month];
@@ -37,20 +38,26 @@ export function BudgetsTab({ branchId }: { branchId: string | null }) {
     queryFn: () => api.get<BudgetView>(`/accounting/budgets?branchId=${branchId}&month=${month}`),
     enabled: !!branchId,
   });
+  const reset = () => {
+    setEditingId(null);
+    setCategory("");
+    setAmount("");
+  };
   const save = useMutation({
     mutationFn: (dto: { month: string; category: string; amount: number }) =>
       api.put(`/accounting/budgets?branchId=${branchId}`, dto),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["acct", "budgets"] });
-      setCategory("");
-      setAmount("");
-      toast.success("Budget saved");
+      reset();
+      toast.success(editingId ? "Budget updated" : "Budget saved");
     },
     onError: (e) => toast.error(err(e)),
   });
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/accounting/budgets/${id}?branchId=${branchId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["acct", "budgets"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["acct", "budgets"] });
+    },
     onError: (e) => toast.error(err(e)),
   });
 
@@ -59,22 +66,36 @@ export function BudgetsTab({ branchId }: { branchId: string | null }) {
       <Card className="flex flex-wrap items-end gap-3 p-4">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor="bud-month">Month</label>
-          <Input id="bud-month" type="month" className="w-44" value={month} onChange={(e) => setMonth(e.target.value)} />
+          <Input id="bud-month" type="month" className="w-44" value={month} onChange={(e) => { setMonth(e.target.value); reset(); }} />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor="bud-cat">Expense category</label>
-          <Input id="bud-cat" className="w-48" placeholder="e.g. Rent, Utilities" value={category} onChange={(e) => setCategory(e.target.value)} />
+          <Input
+            id="bud-cat"
+            className="w-48"
+            placeholder="e.g. Rent, Utilities"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={!!editingId}
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor="bud-amt">Budget</label>
           <Input id="bud-amt" type="number" min="0" step="0.01" className="w-36" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
-        <Button
-          disabled={!category.trim() || !amount || save.isPending}
-          onClick={() => save.mutate({ month, category: category.trim(), amount: Number(amount) })}
-        >
-          Set budget
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            disabled={!category.trim() || !amount || save.isPending}
+            onClick={() => save.mutate({ month, category: category.trim(), amount: Number(amount) })}
+          >
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
 
       <Card className="overflow-x-auto p-4">
@@ -102,8 +123,32 @@ export function BudgetsTab({ branchId }: { branchId: string | null }) {
                       </div>
                       <span className="text-[11px] text-muted-foreground">{r.percentUsed}%</span>
                     </td>
-                    <td className="text-right">
-                      <button type="button" className="text-xs text-muted-foreground hover:text-destructive" onClick={() => remove.mutate(r.id)}>Remove</button>
+                    <td className="space-x-3 text-right text-xs">
+                      <button
+                        type="button"
+                        className="text-primary hover:underline"
+                        onClick={() => {
+                          setEditingId(r.id);
+                          setCategory(r.category);
+                          setAmount(String(r.budget));
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          if (!confirm(`Delete budget for ${r.category}?`)) return;
+                          remove.mutate(r.id, {
+                            onSuccess: () => {
+                              if (editingId === r.id) reset();
+                            },
+                          });
+                        }}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}

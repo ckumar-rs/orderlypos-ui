@@ -31,6 +31,8 @@ export interface Ingredient {
   reorderLevel: string;
   currentStock: string;
   costPerUnit: string;
+  purchaseToBase?: string;
+  leadTimeDays?: string | null;
   isActive: boolean;
 }
 
@@ -228,6 +230,17 @@ export function useUpdateIngredient(branchId: string | null) {
   });
 }
 
+export function useDeleteIngredient(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ ok: true; deactivated?: boolean }>(
+        `/inventory/ingredients/${id}?branchId=${branchId}`,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "ingredients", branchId] }),
+  });
+}
+
 export function useAdjustStock(branchId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -347,6 +360,26 @@ export function useCreateSupplier(branchId: string | null) {
   });
 }
 
+export function useUpdateSupplier(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: Partial<SupplierDto> }) =>
+      api.patch<Supplier>(`/inventory/suppliers/${id}?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "suppliers", branchId] }),
+  });
+}
+
+export function useDeleteSupplier(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ ok: true; deactivated?: boolean }>(
+        `/inventory/suppliers/${id}?branchId=${branchId}`,
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "suppliers", branchId] }),
+  });
+}
+
 // --- Purchase orders -----------------------------------------------------------
 
 export function usePurchaseOrders(branchId: string | null, status?: PurchaseOrderStatus) {
@@ -375,6 +408,20 @@ export function useCreatePurchaseOrder(branchId: string | null) {
     mutationFn: (dto: PurchaseOrderDto) =>
       api.post<PurchaseOrder>(`/inventory/purchase-orders?branchId=${branchId}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "purchase-orders", branchId] }),
+  });
+}
+
+export function useUpdatePurchaseOrder(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: PurchaseOrderDto }) =>
+      api.patch<PurchaseOrder>(`/inventory/purchase-orders/${id}?branchId=${branchId}`, dto),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["inventory", "purchase-orders", branchId] });
+      qc.invalidateQueries({
+        queryKey: ["inventory", "purchase-orders", branchId, "detail", vars.id],
+      });
+    },
   });
 }
 
@@ -455,6 +502,24 @@ export function useCreatePurchaseRequest(branchId: string | null) {
   });
 }
 
+export function useUpdatePurchaseRequest(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: PurchaseRequestDto }) =>
+      api.patch<PurchaseRequest>(`/inventory/purchase-requests/${id}?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "purchase-requests", branchId] }),
+  });
+}
+
+export function useDeletePurchaseRequest(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ ok: true }>(`/inventory/purchase-requests/${id}?branchId=${branchId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "purchase-requests", branchId] }),
+  });
+}
+
 export function useUpdatePurchaseRequestStatus(branchId: string | null) {
   const qc = useQueryClient();
   return useMutation({
@@ -484,6 +549,24 @@ export function useCreateQuotation(branchId: string | null) {
   return useMutation({
     mutationFn: (dto: SupplierQuotationDto) =>
       api.post<SupplierQuotation>(`/inventory/quotations?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "quotations", branchId] }),
+  });
+}
+
+export function useUpdateQuotation(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: SupplierQuotationDto }) =>
+      api.patch<SupplierQuotation>(`/inventory/quotations/${id}?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "quotations", branchId] }),
+  });
+}
+
+export function useDeleteQuotation(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<{ ok: true }>(`/inventory/quotations/${id}?branchId=${branchId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "quotations", branchId] }),
   });
 }
@@ -526,6 +609,15 @@ export function useRecordSupplierPayment(branchId: string | null) {
   return useMutation({
     mutationFn: ({ invoiceId, dto }: { invoiceId: string; dto: SupplierPaymentDto }) =>
       api.post(`/inventory/supplier-invoices/${invoiceId}/payments?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "supplier-invoices", branchId] }),
+  });
+}
+
+export function useCancelSupplierInvoice(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.patch(`/inventory/supplier-invoices/${id}/cancel?branchId=${branchId}`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "supplier-invoices", branchId] }),
   });
 }
@@ -683,6 +775,14 @@ export function usePostStockCount(branchId: string | null) {
   });
 }
 
+export function useDeleteStockCount(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/inventory/stock-counts/${id}?branchId=${branchId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "stock-counts", branchId] }),
+  });
+}
+
 export function usePrepRecipes(branchId: string | null) {
   return useQuery({
     queryKey: ["inventory", "prep-recipes", branchId],
@@ -696,6 +796,15 @@ export function useCreatePrepRecipe(branchId: string | null) {
   return useMutation({
     mutationFn: (dto: PrepRecipeDto) =>
       api.post<PrepRecipe>(`/inventory/prep-recipes?branchId=${branchId}`, dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "prep-recipes", branchId] }),
+  });
+}
+
+export function useUpdatePrepRecipe(branchId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: PrepRecipeDto }) =>
+      api.patch<PrepRecipe>(`/inventory/prep-recipes/${id}?branchId=${branchId}`, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory", "prep-recipes", branchId] }),
   });
 }

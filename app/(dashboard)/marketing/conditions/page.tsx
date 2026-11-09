@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { PromoNav } from "@/components/marketing/promo-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,7 +28,8 @@ export default function ConditionalPromotionsPage() {
   const customers = useCustomers(branchId);
   const items = useMenuItems(branchId);
   const promotions = usePromotions(branchId);
-  const { createPromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const { createPromotion, updatePromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [kind, setKind] = useState("PERCENT");
   const [value, setValue] = useState("10");
@@ -40,10 +40,68 @@ export default function ConditionalPromotionsPage() {
   const rules = (promotions.data ?? []).filter(
     (row) => Number(row.minOrderAmount ?? 0) > 0 || row.customerId || row.weatherCode || row.bundleMenuItemId,
   );
+  const pending = createPromotion.isPending || updatePromotion.isPending;
+
+  const reset = () => {
+    setEditingId(null);
+    setName("");
+    setKind("PERCENT");
+    setValue("10");
+    setMinOrderAmount("");
+    setCustomerId("");
+    setWeatherCode("");
+    setBundleMenuItemId("");
+  };
+
+  const loadEdit = (row: PromotionRow) => {
+    setEditingId(row.id);
+    setName(row.name);
+    setKind(row.kind);
+    setValue(String(Number(row.value)));
+    setMinOrderAmount(Number(row.minOrderAmount ?? 0) > 0 ? String(row.minOrderAmount) : "");
+    setCustomerId(row.customerId ?? "");
+    setWeatherCode(row.weatherCode ?? "");
+    setBundleMenuItemId(row.bundleMenuItemId ?? "");
+  };
+
+  const submit = () => {
+    const dto = {
+      name: name.trim(),
+      kind,
+      value: Number(value),
+      minOrderAmount: minOrderAmount ? Number(minOrderAmount) : 0,
+      customerId: customerId || null,
+      weatherCode: weatherCode.trim() || null,
+      bundleMenuItemId: bundleMenuItemId || null,
+      allDay: true,
+      daysOfWeek: DAYS,
+      startTime: "00:00",
+      endTime: "23:59",
+    };
+    if (editingId) {
+      updatePromotion.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Condition updated");
+            reset();
+          },
+          onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not update"),
+        },
+      );
+      return;
+    }
+    createPromotion.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Condition created");
+        reset();
+      },
+      onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
+    });
+  };
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <PromoNav />
       <div>
         <h1 className="text-2xl font-semibold">Conditional discounts</h1>
         <p className="text-sm text-muted-foreground">
@@ -73,37 +131,21 @@ export default function ConditionalPromotionsPage() {
             ))}
           </select>
         </div>
-        <Button
-          type="button"
-          className="justify-self-start"
-          disabled={createPromotion.isPending || !name.trim() || (!minOrderAmount && !customerId && !weatherCode.trim() && !bundleMenuItemId)}
-          onClick={() =>
-            createPromotion.mutate(
-              {
-                name: name.trim(),
-                kind,
-                value: Number(value),
-                minOrderAmount: minOrderAmount ? Number(minOrderAmount) : 0,
-                customerId: customerId || null,
-                weatherCode: weatherCode.trim() || null,
-                bundleMenuItemId: bundleMenuItemId || null,
-                allDay: true,
-                daysOfWeek: DAYS,
-                startTime: "00:00",
-                endTime: "23:59",
-              },
-              {
-                onSuccess: () => {
-                  toast.success("Condition saved");
-                  setName("");
-                },
-                onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
-              },
-            )
-          }
-        >
-          Save condition
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            className="justify-self-start"
+            disabled={pending || !name.trim() || (!minOrderAmount && !customerId && !weatherCode.trim() && !bundleMenuItemId)}
+            onClick={submit}
+          >
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="flex flex-col gap-2">
         {rules.map((row) => {
@@ -116,10 +158,25 @@ export default function ConditionalPromotionsPage() {
                 <p className="text-sm text-muted-foreground">{summary(row, customerName, bundleName)}</p>
               </div>
               <div className="flex gap-2">
+                <Button size="sm" variant="outline" type="button" onClick={() => loadEdit(row)}>
+                  Edit
+                </Button>
                 <Button size="sm" variant="outline" type="button" onClick={() => promotionActive.mutate({ id: row.id, isActive: !row.isActive })}>
                   {row.isActive ? "Pause" : "Resume"}
                 </Button>
-                <Button size="sm" variant="outline" type="button" onClick={() => confirm(`Delete ${row.name}?`) && deletePromotion.mutate(row.id)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    if (!confirm(`Delete ${row.name}?`)) return;
+                    deletePromotion.mutate(row.id, {
+                      onSuccess: () => {
+                        if (editingId === row.id) reset();
+                      },
+                    });
+                  }}
+                >
                   Delete
                 </Button>
               </div>

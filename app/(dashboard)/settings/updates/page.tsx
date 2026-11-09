@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { NavDot } from "@/components/layout/nav-dot";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -97,7 +96,6 @@ export default function UpdatesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <SettingsTabs />
 
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between">

@@ -11,6 +11,8 @@ const product: Item[] = [
   { href: "/orderlyPOS/features", label: "Features", note: "Every staff screen, and what it is for" },
   { href: "/orderlyPOS/agent", label: "Agentic", note: "Ask reads the books. Rules run every five minutes" },
   { href: "/orderlyPOS/how-to-use", label: "How to use", note: "From the door to the cash drawer" },
+  { href: "/orderlyPOS#plan-finder", label: "Plan finder", note: "Two choices to match this outlet" },
+  { href: "/orderlyPOS#channels", label: "Order channels", note: "QR, kiosk, WhatsApp, and the till" },
 ];
 
 const company: Item[] = [

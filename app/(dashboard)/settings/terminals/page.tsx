@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { TerminalForm, type TerminalRow } from "@/components/settings/commerce-settings";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBranch } from "@/hooks/use-branch";
@@ -18,7 +17,6 @@ export default function TerminalsSettingsPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["commerce-terminals", branchId] });
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-lg font-semibold">Card terminals</h1>
         <p className="text-sm text-muted-foreground">

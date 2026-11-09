@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { OrderSectionNav } from "@/components/orders/order-section-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +23,6 @@ export default function CurbsidePage() {
   const [vehicle, setVehicle] = useState("");
   return (
     <div className="flex flex-col gap-4">
-      <OrderSectionNav />
       <div>
         <h1 className="text-2xl font-semibold">Curbside pickup</h1>
         <p className="text-sm text-muted-foreground">Mark a takeaway bill with the vehicle so the runner can find the guest.</p>

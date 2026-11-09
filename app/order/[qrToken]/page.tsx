@@ -1,86 +1,32 @@
 "use client";
 
-import { BellRing, CheckCircle2, Leaf, Minus, Plus, Receipt, UtensilsCrossed } from "lucide-react";
+import { Search, UtensilsCrossed } from "lucide-react";
 import Link from "next/link";
-import { use, useEffect, useState } from "react";
+import { use, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { GuestCartBar } from "@/components/order/guest-cart-bar";
+import { GuestDishCard } from "@/components/order/guest-dish-card";
+import { GuestOrderStatus } from "@/components/order/guest-order-status";
+import { GuestPlaced } from "@/components/order/guest-placed";
+import type {
+  CartLine,
+  PublicMenuItem,
+  PublicMenuResponse,
+  PublicStatus,
+} from "@/components/order/guest-types";
+import { GuestWelcome } from "@/components/order/guest-welcome";
+import { TableReorder } from "@/components/order/table-reorder";
 import { ModifierPickerDialog } from "@/components/pos/modifier-picker-dialog";
-import { PopBurst } from "@/components/order/pop-burst";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/lib/i18n/context";
 import { api, ApiError } from "@/lib/api";
 import { playSuccessChime, vibrateSuccess } from "@/lib/celebrate";
 import { formatCurrency } from "@/lib/format";
 import { enqueueRequest, flushQueue } from "@/lib/offline-queue";
-import { TableReorder } from "@/components/order/table-reorder";
+import { cn } from "@/lib/utils";
 import { uuid } from "@/lib/uuid";
-
-interface PublicMenuItem {
-  id: string;
-  name: string;
-  description: string | null;
-  imageUrl?: string | null;
-  price: string;
-  isVeg: boolean;
-  sizes?: { id: string; name: string; price: string }[];
-  modifierGroups: {
-    modifierGroup: {
-      id: string;
-      name: string;
-      minSelect: number;
-      maxSelect: number;
-      isRequired: boolean;
-      modifiers: { id: string; name: string; imageUrl?: string | null; priceAdjustment: string; isDefault: boolean }[];
-    };
-  }[];
-}
-
-// One cart line = an item plus its chosen options; the same item with
-// different options is a separate line.
-interface CartLine {
-  key: string;
-  menuItemId: string;
-  modifierIds: string[];
-  sizeId?: string;
-  label: string;
-  unitPrice: number;
-  quantity: number;
-}
-
-interface PublicStatus {
-  order: {
-    orderNumber: string;
-    status: string;
-    acceptance: string;
-    items: { id: string; nameSnapshot: string; quantity: number; status: string }[];
-  } | null;
-  openRequests: ("WAITER" | "BILL")[];
-}
-
-const ITEM_STATUS_LABEL: Record<string, string> = {
-  NEW: "Received",
-  ACCEPTED: "Received",
-  PREPARING: "Being prepared",
-  READY: "Ready",
-  SERVED: "Served",
-  CANCELLED: "Cancelled",
-};
-
-interface PublicMenuCategory {
-  id: string;
-  name: string;
-  items: PublicMenuItem[];
-}
-
-interface PublicMenuResponse {
-  branchName: string;
-  tableName: string;
-  categories: PublicMenuCategory[];
-}
 
 export default function PublicMenuPage({
   params,
@@ -90,26 +36,26 @@ export default function PublicMenuPage({
   const { qrToken } = use(params);
   const { t } = useI18n();
   const nameStorageKey = `qr-guest-name:${qrToken}`;
+  const phoneStorageKey = `qr-guest-phone:${qrToken}`;
   const queueKey = `table-queue:${qrToken}`;
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pickerItem, setPickerItem] = useState<PublicMenuItem | null>(null);
   const queryClient = useQueryClient();
   const [placed, setPlaced] = useState<{ orderNumber: string } | null>(null);
   const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const [nameDraft, setNameDraft] = useState("");
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
-  // Read any name saved earlier this session after mount, not in the state
-  // initializer — sessionStorage isn't available during server rendering,
-  // so reading it there would make the client's first render disagree with
-  // the server-rendered HTML. This is the legitimate exception the
-  // set-state-in-effect rule carves out for genuine external-system reads
-  // (a browser storage API unavailable until after hydration), not the
-  // derive-state-from-already-available-data anti-pattern it otherwise
-  // flags.
   useEffect(() => {
     const saved = sessionStorage.getItem(nameStorageKey);
+    const savedPhone = sessionStorage.getItem(phoneStorageKey);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setGuestName(saved);
+    if (savedPhone) setGuestPhone(savedPhone);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -126,12 +72,18 @@ export default function PublicMenuPage({
     retry: false,
   });
 
-  // Live status of the table's tab and any pending waiter/bill request.
+  useEffect(() => {
+    if (!activeCategory && data?.categories[0]?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveCategory(data.categories[0].id);
+    }
+  }, [data, activeCategory]);
+
   const { data: status } = useQuery({
     queryKey: ["public-status", qrToken],
     queryFn: () => api.get<PublicStatus>(`/public/menu/${qrToken}/status`),
     refetchInterval: 8000,
-    enabled: !!data,
+    enabled: !!data && !!guestName,
   });
 
   useEffect(() => {
@@ -155,6 +107,9 @@ export default function PublicMenuPage({
       const requestId = uuid();
       const body = {
         guestName,
+        ...(guestPhone.replace(/\D/g, "").length >= 8
+          ? { phone: guestPhone.replace(/\D/g, "") }
+          : {}),
         requestId,
         items: cart.map((l) => ({
           menuItemId: l.menuItemId,
@@ -188,22 +143,27 @@ export default function PublicMenuPage({
     if (!trimmed) return;
     sessionStorage.setItem(nameStorageKey, trimmed);
     setGuestName(trimmed);
+    const phone = phoneDraft.trim();
+    if (phone) {
+      sessionStorage.setItem(phoneStorageKey, phone);
+      setGuestPhone(phone);
+    }
   };
 
   const cartCount = cart.reduce((sum, l) => sum + l.quantity, 0);
-  const cartTotal = cart.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const quantityOfItem = (itemId: string) =>
     cart.filter((l) => l.menuItemId === itemId).reduce((sum, l) => sum + l.quantity, 0);
 
   const addLine = (
     item: PublicMenuItem,
     modifierIds: string[],
-    label: string,
+    optionLabel: string,
     extra: number,
     sizeId?: string,
   ) => {
     const size = item.sizes?.find((row) => row.id === sizeId);
     const key = `${item.id}:${[...modifierIds].sort().join(",")}:${sizeId ?? ""}`;
+    const label = [item.name, size?.name, optionLabel].filter(Boolean).join(" · ");
     setCart((prev) => {
       const existing = prev.find((l) => l.key === key);
       if (existing) return prev.map((l) => (l.key === key ? { ...l, quantity: l.quantity + 1 } : l));
@@ -214,17 +174,19 @@ export default function PublicMenuPage({
           menuItemId: item.id,
           modifierIds,
           sizeId,
-          label: [size?.name, label].filter(Boolean).join(", "),
+          label,
           unitPrice: (size ? Number(size.price) : Number(item.price)) + extra,
           quantity: 1,
         },
       ];
     });
   };
+
   const handleAdd = (item: PublicMenuItem) => {
     if (item.modifierGroups.length > 0 || (item.sizes?.length ?? 0) > 0) setPickerItem(item);
     else addLine(item, [], "", 0);
   };
+
   const removeOne = (itemId: string) =>
     setCart((prev) => {
       const idx = [...prev].reverse().findIndex((l) => l.menuItemId === itemId);
@@ -235,12 +197,40 @@ export default function PublicMenuPage({
         .filter((l) => l.quantity > 0);
     });
 
+  const changeQty = (key: string, delta: number) =>
+    setCart((prev) =>
+      prev
+        .map((l) => (l.key === key ? { ...l, quantity: l.quantity + delta } : l))
+        .filter((l) => l.quantity > 0),
+    );
+
+  const visibleCategories = useMemo(() => {
+    if (!data) return [];
+    if (!deferredQuery) return data.categories;
+    return data.categories
+      .map((category) => ({
+        ...category,
+        items: category.items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(deferredQuery) ||
+            (item.description ?? "").toLowerCase().includes(deferredQuery),
+        ),
+      }))
+      .filter((category) => category.items.length > 0);
+  }, [data, deferredQuery]);
+
   if (error) {
+    const unrecognized =
+      error instanceof ApiError && (error.status === 404 || /not recognized/i.test(error.message));
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background px-6 text-center">
-        <UtensilsCrossed className="h-10 w-10 text-muted-foreground" />
-        <p className="text-lg font-medium text-foreground">{t("order.qrNotRecognized")}</p>
-        <p className="text-sm text-muted-foreground">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+        <div className="flex size-14 items-center justify-center rounded-2xl bg-secondary">
+          <UtensilsCrossed className="size-6 text-muted-foreground" />
+        </div>
+        <p className="text-lg font-semibold text-foreground">
+          {unrecognized ? t("order.qrNotRecognized") : t("order.menuUnavailable")}
+        </p>
+        <p className="max-w-xs text-sm text-muted-foreground">
           {error instanceof ApiError ? error.message : t("order.askStaffForHelp")}
         </p>
       </div>
@@ -249,96 +239,122 @@ export default function PublicMenuPage({
 
   if (placed) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center">
-        <div className="relative flex h-10 w-10 items-center justify-center">
-          <PopBurst />
-          <CheckCircle2 className="h-10 w-10 text-success" />
-        </div>
-        <p className="text-lg font-medium text-foreground">
-          {t("order.thankYouName", { name: guestName })}
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {t("order.thanksMessage", { branch: data?.branchName ?? t("order.theKitchen") })}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {t("order.orderNumberSent", { number: placed.orderNumber })}
-        </p>
-        <Button variant="outline" className="mt-2" onClick={() => setPlaced(null)}>
-          {t("order.orderMore")}
-        </Button>
-      </div>
+      <GuestPlaced
+        guestName={guestName}
+        branchName={data?.branchName}
+        orderNumber={placed.orderNumber}
+        onMore={() => setPlaced(null)}
+      />
     );
   }
 
   if (!guestName) {
     return (
-      <div className="relative flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-        <div className="absolute right-4 top-4">
-          <LanguageSwitcher compact />
-        </div>
-        <UtensilsCrossed className="h-8 w-8 text-primary" />
-        {isLoading ? (
-          <Skeleton className="h-7 w-40" />
-        ) : (
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {data?.branchName}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">{data?.tableName}</p>
-          </div>
-        )}
-        <form
-          className="flex w-full max-w-xs flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            confirmName();
-          }}
-        >
-          <div className="flex flex-col gap-2 text-left">
-            <Label htmlFor="guest-name">{t("order.whatsYourName")}</Label>
-            <Input
-              id="guest-name"
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              placeholder={t("order.namePlaceholder")}
-              autoFocus
-              maxLength={60}
-            />
-          </div>
-          <Button type="submit" className="h-11" disabled={!nameDraft.trim()}>
-            {t("order.continueToMenu")}
-          </Button>
-        </form>
-      </div>
+      <GuestWelcome
+        branchName={data?.branchName}
+        tableName={data?.tableName}
+        loading={isLoading}
+        nameDraft={nameDraft}
+        onNameDraft={setNameDraft}
+        phoneDraft={phoneDraft}
+        onPhoneDraft={setPhoneDraft}
+        onContinue={confirmName}
+      />
     );
   }
 
   return (
-    <div className="relative min-h-screen bg-background pb-24">
-      <header className="border-b border-border px-5 py-6 text-center">
-        <div className="absolute right-4 top-4">
-          <LanguageSwitcher compact />
-        </div>
-        {isLoading ? (
-          <Skeleton className="mx-auto h-7 w-40" />
-        ) : (
-          <>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              {data?.branchName}
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">{data?.tableName}</p>
-            <Link href={`/guest/${qrToken}`} className="mt-2 inline-block text-sm text-primary underline">
-              Guest profile
+    <div className="relative min-h-dvh overflow-x-hidden bg-background pb-28">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(70%_80%_at_50%_0%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent)]"
+      />
+
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur-md">
+        <div className="mx-auto flex max-w-lg items-start justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+          <div className="min-w-0">
+            {isLoading ? (
+              <Skeleton className="h-7 w-40" />
+            ) : (
+              <>
+                <p className="text-[11px] font-medium tracking-[0.16em] text-primary uppercase">
+                  {data?.tableName}
+                </p>
+                <h1 className="mt-0.5 truncate text-xl font-semibold tracking-tight text-foreground">
+                  {data?.branchName}
+                </h1>
+                <p className="mt-0.5 text-xs text-muted-foreground">Ordering as {guestName}</p>
+              </>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href={`/guest/${qrToken}`}
+              className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              Profile
             </Link>
-          </>
-        )}
+            <LanguageSwitcher compact />
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-lg px-4 pb-3">
+          <label className="relative block">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search the menu"
+              className="h-11 rounded-xl border-border/80 bg-card pl-9 shadow-none"
+              aria-label="Search the menu"
+            />
+          </label>
+        </div>
+
+        {!deferredQuery && data && data.categories.length > 0 ? (
+          <div className="mx-auto max-w-lg overflow-hidden px-4 pb-3">
+            <div
+              role="tablist"
+              aria-label="Categories"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              className="flex gap-1.5 overflow-x-auto overscroll-x-contain [&::-webkit-scrollbar]:hidden"
+            >
+              {data.categories.map((category) => {
+                const selected = category.id === activeCategory;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => {
+                      setActiveCategory(category.id);
+                      document.getElementById(`cat-${category.id}`)?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }}
+                    className={cn(
+                      "shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {category.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </header>
 
-      <main className="mx-auto max-w-lg px-5 py-6">
+      <main className="relative mx-auto max-w-lg px-4 pt-4">
         {isLoading ? (
           <div className="flex flex-col gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 rounded-2xl" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-2xl" />
             ))}
           </div>
         ) : (
@@ -346,128 +362,60 @@ export default function PublicMenuPage({
             <TableReorder
               qrToken={qrToken}
               onAdd={(dish) => {
-                const item = data?.categories.flatMap((category) => category.items).find((row) => row.id === dish.menuItemId);
+                const item = data?.categories
+                  .flatMap((category) => category.items)
+                  .find((row) => row.id === dish.menuItemId);
                 if (!item) return;
                 for (let n = 0; n < Math.max(1, dish.quantity || 1); n += 1) {
                   addLine(item, dish.modifierIds, "", 0);
                 }
               }}
             />
-            {data?.categories.map((category) => (
-              <section key={category.id} className="flex flex-col gap-3">
-                <h2 className="text-[13px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {category.name}
-                </h2>
-                <div className="flex flex-col divide-y divide-border">
-                  {category.items.map((item) => {
-                    const quantity = quantityOfItem(item.id);
-                    return (
-                      <div key={item.id} className="flex items-start justify-between gap-4 py-3">
-                        <div className="flex items-start gap-2">
-                          {item.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- public menu photo
-                            <img src={item.imageUrl} alt="" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
-                          ) : (
-                            <Leaf
-                              className={`mt-1 h-3.5 w-3.5 shrink-0 ${item.isVeg ? "text-success" : "text-destructive"}`}
-                            />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{item.name}</p>
-                            {item.description && (
-                              <p className="mt-0.5 text-xs text-muted-foreground">
-                                {item.description}
-                              </p>
-                            )}
-                            <span className="mt-1 block text-sm font-medium tabular-nums text-foreground">
-                              {formatCurrency(item.price)}
-                            </span>
-                          </div>
-                        </div>
-                        {quantity > 0 ? (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => removeOne(item.id)}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="w-5 text-center text-sm tabular-nums">{quantity}</span>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => handleAdd(item)}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="shrink-0"
-                            onClick={() => handleAdd(item)}
-                          >
-                            {t("order.add")}
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+
+            {visibleCategories.length === 0 ? (
+              <p className="py-16 text-center text-sm text-muted-foreground">No dishes match that search.</p>
+            ) : (
+              visibleCategories.map((category) => (
+                <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-44">
+                  <h2 className="mb-1 text-sm font-semibold tracking-tight text-foreground">
+                    {category.name}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {category.items.length}
+                    </span>
+                  </h2>
+                  <div className="divide-y divide-border/80 border-t border-border/80">
+                    {category.items.map((item) => (
+                      <GuestDishCard
+                        key={item.id}
+                        item={item}
+                        quantity={quantityOfItem(item.id)}
+                        addLabel={t("order.add")}
+                        onAdd={() => handleAdd(item)}
+                        onRemove={() => removeOne(item.id)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))
+            )}
           </div>
         )}
       </main>
 
-      {status && (status.order || status.openRequests.length > 0 || data) && (
-        <section className="mx-auto max-w-lg px-5 pb-6">
-          {status.order && (
-            <div className="mb-4 rounded-2xl border border-border p-4">
-              <p className="text-sm font-medium text-foreground">
-                Your order #{status.order.orderNumber}
-                {status.order.acceptance === "PENDING" && " — waiting for the restaurant to confirm"}
-              </p>
-              <ul className="mt-2 flex flex-col gap-1 text-sm text-muted-foreground">
-                {status.order.items.map((i) => (
-                  <li key={i.id} className="flex justify-between gap-3">
-                    <span>
-                      {i.quantity} × {i.nameSnapshot}
-                    </span>
-                    <span>{ITEM_STATUS_LABEL[i.status] ?? i.status}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="h-11 flex-1"
-              disabled={requestService.isPending || status.openRequests.includes("WAITER")}
-              onClick={() => requestService.mutate("WAITER")}
-            >
-              <BellRing className="mr-2 h-4 w-4" />
-              {status.openRequests.includes("WAITER") ? "Waiter is coming" : "Call waiter"}
-            </Button>
-            {status.order && (
-              <Button
-                variant="outline"
-                className="h-11 flex-1"
-                disabled={requestService.isPending || status.openRequests.includes("BILL")}
-                onClick={() => requestService.mutate("BILL")}
-              >
-                <Receipt className="mr-2 h-4 w-4" />
-                {status.openRequests.includes("BILL") ? "Bill requested" : "Request bill"}
-              </Button>
-            )}
-          </div>
-        </section>
-      )}
+      {status ? (
+        <div className="mt-6">
+          <GuestOrderStatus
+            status={status}
+            currency={data?.currency ?? "INR"}
+            token={qrToken}
+            guestSignals={data?.guestSignals}
+            cashLabel={data?.pay?.cashLabel}
+            preferredPaymentMethod={data?.pay?.preferred}
+            requesting={requestService.isPending}
+            onRequest={(type) => requestService.mutate(type)}
+          />
+        </div>
+      ) : null}
 
       <ModifierPickerDialog
         item={pickerItem}
@@ -476,39 +424,36 @@ export default function PublicMenuPage({
         onConfirm={(ids, label, _portion, sizeId) => {
           if (!pickerItem) return;
           const extra = ids.reduce((sum, id) => {
-            const m = pickerItem.modifierGroups.flatMap((g) => g.modifierGroup.modifiers).find((x) => x.id === id);
+            const m = pickerItem.modifierGroups
+              .flatMap((g) => g.modifierGroup.modifiers)
+              .find((x) => x.id === id);
             return sum + (m ? Number(m.priceAdjustment) : 0);
           }, 0);
           addLine(pickerItem, ids, label, extra, sizeId);
         }}
       />
 
-      <footer className="border-t border-border px-5 py-6 text-center text-xs text-muted-foreground">
+      <footer className="mx-auto max-w-lg px-4 pt-6 pb-4 text-center text-[11px] text-muted-foreground">
         {t("order.pricesIncludeTax")}
+        {cartCount > 0 ? ` · ${formatCurrency(cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0))} in cart` : null}
       </footer>
 
-      {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background px-5 py-4 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-          <div className="mx-auto flex max-w-lg items-center gap-3">
-            <Button
-              className="h-12 flex-1"
-              disabled={placeOrder.isPending}
-              onClick={() => placeOrder.mutate()}
-            >
-              {placeOrder.isPending
-                ? t("order.placingOrder")
-                : `${t("order.placeOrder")} — ${cartCount} ${cartCount > 1 ? t("order.items") : t("order.item")} · ${formatCurrency(cartTotal)}`}
-            </Button>
-          </div>
-          {placeOrder.isError && (
-            <p className="mx-auto mt-2 max-w-lg text-center text-xs text-destructive">
-              {placeOrder.error instanceof ApiError
-                ? placeOrder.error.message
-                : t("order.couldNotPlace")}
-            </p>
-          )}
-        </div>
-      )}
+      <GuestCartBar
+        lines={cart}
+        placing={placeOrder.isPending}
+        placeLabel={t("order.placeOrder")}
+        placingLabel={t("order.placingOrder")}
+        itemsLabel={`${cartCount} ${cartCount > 1 ? t("order.items") : t("order.item")}`}
+        error={
+          placeOrder.isError
+            ? placeOrder.error instanceof ApiError
+              ? placeOrder.error.message
+              : t("order.couldNotPlace")
+            : null
+        }
+        onPlace={() => placeOrder.mutate()}
+        onChangeQty={changeQty}
+      />
     </div>
   );
 }

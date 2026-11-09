@@ -4,7 +4,8 @@ import { Mail, Phone } from "lucide-react";
 import { useState } from "react";
 import { RecordFields } from "@/components/fields/record-fields";
 import { AddSupplierDialog } from "@/components/inventory/add-supplier-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
+import { EditSupplierDialog } from "@/components/inventory/edit-supplier-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,17 +25,9 @@ export default function SuppliersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Ingredients, recipe costing, purchase orders, and waste
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <AddSupplierDialog branchId={branchId} />
       </div>
-
-      <InventoryTabs />
 
       <Input
         placeholder="Search suppliers…"
@@ -54,12 +47,16 @@ export default function SuppliersPage() {
           filtered.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-4 px-4 py-3">
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">{s.name}</span>
+                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  {s.name}
+                  {!s.isActive && <Badge variant="outline">Inactive</Badge>}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {s.contactName || "No contact person on file"}
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <EditSupplierDialog branchId={branchId} supplier={s} />
                 <Button type="button" size="sm" variant="outline" onClick={() => setOpenId(s.id)}>
                   Extra fields
                 </Button>

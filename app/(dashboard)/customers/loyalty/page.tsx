@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CustomerTabs } from "@/components/customers/customer-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBranch } from "@/hooks/use-branch";
@@ -80,7 +79,6 @@ export default function LoyaltyRulesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <CustomerTabs />
       <div>
         <h1 className="text-2xl font-semibold">Loyalty rules</h1>
         <p className="text-sm text-muted-foreground">

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/layout/logo";
+import { HomeAnnouncement } from "@/components/site/home-announcement";
+import { HomeStickyCta } from "@/components/site/home-sticky-cta";
 import { ReachUs } from "@/components/site/reach-us";
 import { PageJsonLd, SiteJsonLd } from "@/components/site/site-jsonld";
 import { SiteNav } from "@/components/site/site-nav";
@@ -20,7 +22,7 @@ const highlights = [
   },
   {
     title: "The floor",
-    body: "The till, the kitchen, the tables, and the guest kiosk run on the computer in the restaurant.",
+    body: "Till, kitchen, tables, and guest kiosk on phone, tablet, kiosk screen, or computer.",
     href: "/orderlyPOS/features",
     label: "Every screen",
   },
@@ -69,14 +71,22 @@ const columns = [
 export function SiteFrame({
   children,
   page,
+  ctaTitle = "Try now OrderlyPOS.",
+  ctaBody = "Ask reads the service. A rule keeps checking after close. The floor still rings the bill.",
+  showCta = true,
 }: {
   children: ReactNode;
   page: { path: string; name: string };
+  /** Single site conversion band — do not also render SitePageCta on the page. */
+  ctaTitle?: string;
+  ctaBody?: string;
+  showCta?: boolean;
 }) {
   return (
     <div className="flex min-h-full flex-col bg-background text-foreground">
       <SiteJsonLd />
       <PageJsonLd path={page.path} name={page.name} />
+      <HomeAnnouncement />
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto grid h-14 max-w-6xl grid-cols-[auto_auto_1fr] items-center gap-x-3 px-5 sm:px-6 lg:flex lg:gap-6">
           <Link href="/orderlyPOS" className="col-start-1 row-start-1 shrink-0">
@@ -97,14 +107,13 @@ export function SiteFrame({
         </div>
       </header>
       <main className="flex-1">{children}</main>
+      {showCta ? (
       <section className="border-t border-border">
         <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="max-w-xl text-3xl font-medium tracking-tight text-balance">Try now OrderlyPOS.</h2>
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-                Ask reads the service. A rule keeps checking after close. The floor still rings the bill.
-              </p>
+              <h2 className="max-w-xl text-3xl font-medium tracking-tight text-balance">{ctaTitle}</h2>
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">{ctaBody}</p>
             </div>
             <div className="flex flex-col items-start gap-3 sm:items-end">
               <Link
@@ -129,6 +138,7 @@ export function SiteFrame({
           </ul>
         </div>
       </section>
+      ) : null}
       <footer className="border-t border-border">
         <div className="mx-auto grid max-w-6xl gap-10 px-5 py-16 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
           {columns.map((column) => (
@@ -156,6 +166,7 @@ export function SiteFrame({
           OrderlyPOS is made by Contrivya. Plans start at ₹2,999 a month.
         </p>
       </footer>
+      <HomeStickyCta />
     </div>
   );
 }

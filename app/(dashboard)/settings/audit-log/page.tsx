@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -53,13 +52,6 @@ export default function AuditLogPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-
-      <SettingsTabs />
-
       <Card className="flex flex-col gap-5 p-6">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">

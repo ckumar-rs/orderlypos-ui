@@ -1,6 +1,6 @@
 "use client";
 
-import type { CreateWaitlistEntryDto } from "@nodedr-restaurant/types";
+import type { CreateWaitlistEntryDto, UpdateWaitlistEntryDto } from "@nodedr-restaurant/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -28,6 +28,15 @@ export function useCreateWaitlistEntry(branchId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (dto: CreateWaitlistEntryDto) => api.post(`/waitlist?branchId=${branchId}`, dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["waitlist", branchId] }),
+  });
+}
+
+export function useUpdateWaitlistEntry(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: UpdateWaitlistEntryDto }) =>
+      api.patch(`/waitlist/${id}?branchId=${branchId}`, dto),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["waitlist", branchId] }),
   });
 }

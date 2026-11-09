@@ -2,8 +2,9 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
 import { toast } from "sonner";
+import { CreatePoDialog } from "@/components/inventory/create-po-dialog";
 import { ReceivePoDialog } from "@/components/inventory/receive-po-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
   const { branchId } = useBranch();
   const { data: po, isLoading } = usePurchaseOrder(branchId, id);
   const updateStatus = useUpdatePurchaseOrderStatus(branchId);
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading || !po) {
     return <Skeleton className="h-96 rounded-2xl" />;
@@ -76,9 +78,20 @@ export default function PurchaseOrderDetailPage({ params }: { params: Promise<{ 
 
       <div className="flex flex-wrap items-center gap-2">
         {po.status === "DRAFT" && (
-          <Button size="sm" onClick={send} disabled={updateStatus.isPending}>
-            Mark as sent
-          </Button>
+          <>
+            <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+            <Button size="sm" onClick={send} disabled={updateStatus.isPending}>
+              Mark as sent
+            </Button>
+            <CreatePoDialog
+              branchId={branchId}
+              purchaseOrder={po}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+            />
+          </>
         )}
         {(po.status === "SENT" || po.status === "PARTIALLY_RECEIVED") && (
           <ReceivePoDialog branchId={branchId} po={po} />

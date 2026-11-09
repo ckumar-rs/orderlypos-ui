@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { hasPermission, useCurrentUser } from "@/hooks/use-auth";
 import { useAttendance, useClock, useMyShift } from "@/hooks/use-attendance";
 import { useBranch } from "@/hooks/use-branch";
-import { useHrActions, useMyLeave } from "@/hooks/use-hr";
+import { useHrActions, useMyLeave, useMyLeaveBalances, useMyShifts } from "@/hooks/use-hr";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 
@@ -21,12 +21,21 @@ function duration(from: string, to: string | null) {
 
 function LeaveRequestCard({ branchId }: { branchId: string | null }) {
   const { data: mine } = useMyLeave();
-  const { requestLeave } = useHrActions(branchId);
+  const { data: balances } = useMyLeaveBalances(branchId);
+  const { data: shifts } = useMyShifts(branchId);
+  const { requestLeave, cancelLeave } = useHrActions(branchId);
   const today = new Date().toISOString().slice(0, 10);
   const [f, setF] = useState({ type: "ANNUAL", startDate: today, endDate: today, reason: "" });
   return (
     <Card className="flex flex-col gap-3 p-5">
       <p className="text-sm font-medium text-foreground">Request leave</p>
+      {balances && balances.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {balances
+            .map((b) => `${b.type.toLowerCase()}: ${b.remainingDays} left (${b.usedDays} used, ${b.pendingDays} pending)`)
+            .join(" · ")}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         <select
           aria-label="Leave type"
@@ -61,11 +70,47 @@ function LeaveRequestCard({ branchId }: { branchId: string | null }) {
       {mine && mine.length > 0 && (
         <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
           {mine.slice(0, 5).map((l) => (
-            <li key={l.id}>
-              {l.startDate.slice(0, 10)} → {l.endDate.slice(0, 10)} · {l.type.toLowerCase()} · {l.status.toLowerCase()}
+            <li key={l.id} className="flex flex-wrap items-center gap-2">
+              <span>
+                {l.startDate.slice(0, 10)} → {l.endDate.slice(0, 10)} · {l.type.toLowerCase()} · {l.status.toLowerCase()}
+              </span>
+              {l.status === "PENDING" && (
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() =>
+                    cancelLeave.mutate(l.id, {
+                      onSuccess: () => toast.success("Leave withdrawn"),
+                      onError: (e) => toast.error(e instanceof ApiError ? e.message : "Could not cancel"),
+                    })
+                  }
+                >
+                  Withdraw
+                </button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {shifts && shifts.length > 0 && (
+        <div className="border-t border-border pt-3">
+          <p className="mb-1 text-xs font-medium text-foreground">Upcoming shifts</p>
+          <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {shifts.slice(0, 5).map((s) => (
+              <li key={s.id}>
+                {new Date(s.startsAt).toLocaleString([], {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                –{" "}
+                {new Date(s.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {s.note ? ` · ${s.note}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Card>
   );

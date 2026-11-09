@@ -18,9 +18,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRefundOrder } from "@/hooks/use-orders";
+import { useSettings } from "@/hooks/use-settings";
 import { api, ApiError } from "@/lib/api";
 
-const METHODS: PaymentMethodDto[] = ["CASH", "CARD", "UPI", "OTHER", "STORE_CREDIT"];
+const METHODS: PaymentMethodDto[] = ["UPI", "CASH", "CARD", "OTHER", "STORE_CREDIT"];
 
 export function RefundDialog({
   branchId,
@@ -35,7 +36,12 @@ export function RefundDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(maxAmount));
-  const [method, setMethod] = useState<PaymentMethodDto>("CASH");
+  const { data: settings } = useSettings(branchId);
+  const cashLabel = settings?.restaurant.cashLabel?.trim() || "Cash";
+  const preferred = (settings?.restaurant.preferredPaymentMethod ?? "UPI") as PaymentMethodDto;
+  const [method, setMethod] = useState<PaymentMethodDto>(
+    METHODS.includes(preferred) ? preferred : "UPI",
+  );
   const [reason, setReason] = useState("");
   const refund = useRefundOrder(branchId);
   // Units physically handed back; only these go back into stock.
@@ -100,7 +106,13 @@ export function RefundDialog({
           </div>
           <div className="flex flex-col gap-2">
             <Label>Refund method</Label>
-            <PaymentMethodButtons methods={METHODS} value={method} onChange={setMethod} label="Refund method" />
+            <PaymentMethodButtons
+              methods={METHODS}
+              value={method}
+              onChange={setMethod}
+              label="Refund method"
+              cashLabel={cashLabel}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="refund-reason">Reason (optional)</Label>

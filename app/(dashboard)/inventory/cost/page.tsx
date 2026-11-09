@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,7 +27,6 @@ export default function FoodCostPage() {
   const [target, setTarget] = useState("");
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Food cost</h1>

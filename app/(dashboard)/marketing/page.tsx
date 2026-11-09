@@ -8,15 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PromoNav } from "@/components/marketing/promo-nav";
 import { flattenCategories, useCategories } from "@/hooks/use-menu";
 import { useBranch } from "@/hooks/use-branch";
 import {
   useAudience,
+  useCampaignReport,
   useCampaigns,
   useCoupons,
   useMarketingActions,
   usePromotions,
+  type CampaignReportCounts,
+  type CampaignRow,
 } from "@/hooks/use-marketing";
 import { api, ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -35,26 +37,44 @@ const discountText = (kind: string, value: string, buy?: number | null, get?: nu
 
 function Coupons({ branchId }: { branchId: string | null }) {
   const { data, isLoading } = useCoupons(branchId);
-  const { createCoupon, couponActive, deleteCoupon } = useMarketingActions(branchId);
-  const [f, setF] = useState({ code: "", kind: "PERCENT", value: "", minOrderAmount: "", usageLimit: "" });
+  const { createCoupon, updateCoupon, couponActive, deleteCoupon } = useMarketingActions(branchId);
+  const blank = { code: "", kind: "PERCENT", value: "", minOrderAmount: "", usageLimit: "" };
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [f, setF] = useState(blank);
+  const pending = createCoupon.isPending || updateCoupon.isPending;
+  const reset = () => {
+    setEditingId(null);
+    setF(blank);
+  };
 
   const submit = () => {
-    createCoupon.mutate(
-      {
-        code: f.code,
-        kind: f.kind,
-        value: Number(f.value),
-        minOrderAmount: f.minOrderAmount ? Number(f.minOrderAmount) : 0,
-        usageLimit: f.usageLimit ? Number(f.usageLimit) : undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Coupon created");
-          setF({ ...f, code: "", value: "", minOrderAmount: "", usageLimit: "" });
+    const dto = {
+      code: f.code,
+      kind: f.kind,
+      value: Number(f.value),
+      minOrderAmount: f.minOrderAmount ? Number(f.minOrderAmount) : 0,
+      usageLimit: f.usageLimit ? Number(f.usageLimit) : null,
+    };
+    if (editingId) {
+      updateCoupon.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Coupon updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
         },
-        onError: (e) => toast.error(errMsg(e)),
+      );
+      return;
+    }
+    createCoupon.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Coupon created");
+        reset();
       },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
   };
 
   return (
@@ -68,7 +88,16 @@ function Coupons({ branchId }: { branchId: string | null }) {
         <Input placeholder="Value" inputMode="decimal" value={f.value} onChange={(e) => setF({ ...f, value: e.target.value })} />
         <Input placeholder="Min order" inputMode="decimal" value={f.minOrderAmount} onChange={(e) => setF({ ...f, minOrderAmount: e.target.value })} />
         <Input placeholder="Max uses" inputMode="numeric" value={f.usageLimit} onChange={(e) => setF({ ...f, usageLimit: e.target.value })} />
-        <Button onClick={submit} disabled={createCoupon.isPending}>Create</Button>
+        <div className="flex gap-2">
+          <Button className="flex-1" onClick={submit} disabled={pending}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <Card className="flex flex-col divide-y divide-border p-2">
         {isLoading ? (
@@ -85,6 +114,22 @@ function Coupons({ branchId }: { branchId: string | null }) {
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(c.id);
+                    setF({
+                      code: c.code,
+                      kind: c.kind,
+                      value: String(Number(c.value)),
+                      minOrderAmount: Number(c.minOrderAmount) > 0 ? String(Number(c.minOrderAmount)) : "",
+                      usageLimit: c.usageLimit != null ? String(c.usageLimit) : "",
+                    });
+                  }}
+                >
+                  Edit
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => couponActive.mutate({ id: c.id, isActive: !c.isActive })}>
                   {c.isActive ? "Disable" : "Enable"}
                 </Button>
@@ -107,8 +152,8 @@ function Coupons({ branchId }: { branchId: string | null }) {
 
 function HappyHour({ branchId }: { branchId: string | null }) {
   const { data, isLoading } = usePromotions(branchId);
-  const { createPromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
-  const [f, setF] = useState({
+  const { createPromotion, updatePromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const blank = {
     name: "",
     kind: "PERCENT",
     value: "",
@@ -119,29 +164,51 @@ function HappyHour({ branchId }: { branchId: string | null }) {
     end: "19:00",
     days: [1, 2, 3, 4, 5] as number[],
     categoryId: "",
-  });
+  };
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [f, setF] = useState(blank);
+  const pending = createPromotion.isPending || updatePromotion.isPending;
   const { data: categories } = useCategories(branchId);
   const toggleDay = (d: number) => setF({ ...f, days: f.days.includes(d) ? f.days.filter((x) => x !== d) : [...f.days, d] });
+  const reset = () => {
+    setEditingId(null);
+    setF(blank);
+  };
 
-  const submit = () =>
-    createPromotion.mutate(
-      {
-        name: f.name,
-        kind: f.kind,
-        value: f.kind === "BOGO" ? 0 : Number(f.value),
-        buyQuantity: f.kind === "BOGO" ? Number(f.buy) : undefined,
-        getQuantity: f.kind === "BOGO" ? Number(f.get) : undefined,
-        audience: f.audience as "ALL" | "STAFF",
-        categoryId: f.categoryId || null,
-        daysOfWeek: f.days,
-        startTime: f.start,
-        endTime: f.end,
+  const submit = () => {
+    const dto = {
+      name: f.name,
+      kind: f.kind,
+      value: f.kind === "BOGO" ? 0 : Number(f.value),
+      buyQuantity: f.kind === "BOGO" ? Number(f.buy) : undefined,
+      getQuantity: f.kind === "BOGO" ? Number(f.get) : undefined,
+      audience: f.audience as "ALL" | "STAFF",
+      categoryId: f.categoryId || null,
+      daysOfWeek: f.days,
+      startTime: f.start,
+      endTime: f.end,
+    };
+    if (editingId) {
+      updatePromotion.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Happy hour updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
+        },
+      );
+      return;
+    }
+    createPromotion.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Happy hour created");
+        reset();
       },
-      {
-        onSuccess: () => { toast.success("Happy hour created"); setF({ ...f, name: "", value: "" }); },
-        onError: (e) => toast.error(errMsg(e)),
-      },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,7 +259,16 @@ function HappyHour({ branchId }: { branchId: string | null }) {
               </option>
             ))}
           </select>
-          <Button className="ml-auto" onClick={submit} disabled={createPromotion.isPending}>Create</Button>
+          <div className="ml-auto flex gap-2">
+            <Button onClick={submit} disabled={pending}>
+              {editingId ? "Save" : "Create"}
+            </Button>
+            {editingId && (
+              <Button variant="outline" onClick={reset}>
+                Cancel
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
       <Card className="flex flex-col divide-y divide-border p-2">
@@ -211,6 +287,27 @@ function HappyHour({ branchId }: { branchId: string | null }) {
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(p.id);
+                    setF({
+                      name: p.name,
+                      kind: p.kind,
+                      value: p.kind === "BOGO" ? "" : String(Number(p.value)),
+                      buy: String(p.buyQuantity ?? 1),
+                      get: String(p.getQuantity ?? 1),
+                      audience: p.audience ?? "ALL",
+                      start: p.startTime,
+                      end: p.endTime,
+                      days: [...p.daysOfWeek],
+                      categoryId: p.categoryId ?? "",
+                    });
+                  }}
+                >
+                  Edit
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => promotionActive.mutate({ id: p.id, isActive: !p.isActive })}>
                   {p.isActive ? "Pause" : "Resume"}
                 </Button>
@@ -234,17 +331,213 @@ function AudienceCount({ branchId, id }: { branchId: string | null; id: string }
   return <span>{data ? `${data.count} recipients` : "…"}</span>;
 }
 
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border px-3 py-2">
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold tabular-nums text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function CountGrid({ counts }: { counts: CampaignReportCounts }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <Stat label="Total" value={counts.total} />
+      <Stat label="Queued" value={counts.QUEUED} />
+      <Stat label="Sent" value={counts.SENT} />
+      <Stat label="Delivered" value={counts.DELIVERED} />
+      <Stat label="Read" value={counts.READ} />
+      <Stat label="Failed" value={counts.FAILED} />
+      <Stat label="Opted out" value={counts.OPTED_OUT} />
+    </div>
+  );
+}
+
+function CampaignReportPanel({
+  branchId,
+  campaign,
+  onClose,
+}: {
+  branchId: string | null;
+  campaign: CampaignRow;
+  onClose: () => void;
+}) {
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("");
+  const { data, isLoading, isFetching, refetch } = useCampaignReport(
+    branchId,
+    campaign.id,
+    batchId,
+    status || null,
+  );
+  const csvHref = branchId
+    ? `/api/v1/marketing/campaigns/${campaign.id}/report.csv?branchId=${branchId}${batchId ? `&batchId=${batchId}` : ""}${status ? `&status=${status}` : ""}`
+    : "#";
+
+  return (
+    <Card className="flex flex-col gap-4 border-primary/30 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            Delivery report · {campaign.name}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {campaign.channel} · refreshes every 15s while open
+            {isFetching ? " · updating…" : ""}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => refetch()}>
+            Refresh
+          </Button>
+          <a
+            href={csvHref}
+            className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-sm hover:bg-secondary"
+          >
+            <Download className="mr-2 h-4 w-4" /> Report CSV
+          </a>
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+
+      {isLoading || !data ? (
+        <Skeleton className="h-24" />
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <select
+              aria-label="Send batch"
+              value={batchId ?? data.batchId ?? ""}
+              onChange={(e) => setBatchId(e.target.value || null)}
+              className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            >
+              {(data.batches.length ? data.batches : data.batchId ? [{ id: data.batchId, createdAt: "" }] : []).map(
+                (b) => (
+                  <option key={b.id} value={b.id}>
+                    Batch {b.id}
+                    {b.createdAt ? ` · ${new Date(b.createdAt).toLocaleString()}` : ""}
+                  </option>
+                ),
+              )}
+              {!data.batches.length && !data.batchId && (
+                <option value="">No sends yet</option>
+              )}
+            </select>
+            <select
+              aria-label="Status filter"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+            >
+              <option value="">All statuses</option>
+              <option value="QUEUED">Queued</option>
+              <option value="SENT">Sent</option>
+              <option value="DELIVERED">Delivered</option>
+              <option value="READ">Read</option>
+              <option value="FAILED">Failed</option>
+              <option value="OPTED_OUT">Opted out</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              This send
+            </p>
+            <CountGrid counts={data.batch} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              All sends for this campaign
+            </p>
+            <CountGrid counts={data.overall} />
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-border bg-secondary/40 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">To</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Provider</th>
+                  <th className="px-3 py-2 font-medium">Sent</th>
+                  <th className="px-3 py-2 font-medium">Delivered</th>
+                  <th className="px-3 py-2 font-medium">Read</th>
+                  <th className="px-3 py-2 font-medium">Error</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.messages.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                      No outbound messages for this campaign yet. Send it once delivery
+                      tracking can fill in.
+                    </td>
+                  </tr>
+                ) : (
+                  data.messages.map((m) => (
+                    <tr key={m.id}>
+                      <td className="px-3 py-2 font-mono text-xs">{m.to}</td>
+                      <td className="px-3 py-2">{m.status}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {m.provider ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {m.sentAt ? new Date(m.sentAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {m.deliveredAt ? new Date(m.deliveredAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {m.readAt ? new Date(m.readAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="max-w-[220px] truncate px-3 py-2 text-xs text-destructive">
+                        {m.error ?? ""}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 function Campaigns({ branchId }: { branchId: string | null }) {
   const { data, isLoading } = useCampaigns(branchId);
-  const { createCampaign, deleteCampaign, sendCampaign } = useMarketingActions(branchId);
-  const [f, setF] = useState({
+  const { createCampaign, updateCampaign, deleteCampaign, sendCampaign } = useMarketingActions(branchId);
+  const [reportId, setReportId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const blank = {
     name: "",
     channel: "SMS",
     segment: "ALL",
     message: "",
     tierId: "",
     rfmLabel: "",
-  });
+  };
+  const [f, setF] = useState(blank);
+  const pending = createCampaign.isPending || updateCampaign.isPending;
+  const reset = () => {
+    setEditingId(null);
+    setF(blank);
+  };
+  const loadEdit = (c: CampaignRow) => {
+    setEditingId(c.id);
+    setF({
+      name: c.name,
+      channel: c.channel,
+      segment: c.segment,
+      message: c.message,
+      tierId: c.tierId ?? "",
+      rfmLabel: c.rfmLabel ?? "",
+    });
+  };
   const { data: tiers } = useQuery({
     queryKey: ["customers", "tiers", branchId],
     queryFn: () => api.get<{ id: string; name: string }[]>(`/customers/tiers?branchId=${branchId}`),
@@ -267,6 +560,37 @@ function Campaigns({ branchId }: { branchId: string | null }) {
     queryFn: () => api.get<{ id: string; name: string }[]>(`/customers/rfm/labels?branchId=${branchId}`),
     enabled: !!branchId,
   });
+
+  const submit = () => {
+    const dto = {
+      name: f.name,
+      channel: f.channel,
+      segment: f.segment,
+      message: f.message,
+      ...(f.segment === "TIER" && f.tierId ? { tierId: f.tierId } : {}),
+      ...(f.segment === "RFM" && f.rfmLabel ? { rfmLabel: f.rfmLabel } : {}),
+    };
+    if (editingId) {
+      updateCampaign.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Campaign updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
+        },
+      );
+      return;
+    }
+    createCampaign.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Campaign created");
+        reset();
+      },
+      onError: (e) => toast.error(errMsg(e)),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -317,30 +641,24 @@ function Campaigns({ branchId }: { branchId: string | null }) {
           onChange={(e) => setF({ ...f, message: e.target.value })}
           className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm"
         />
-        <div>
-          <Button
-            disabled={createCampaign.isPending}
-            onClick={() =>
-              createCampaign.mutate(
-                {
-                  name: f.name,
-                  channel: f.channel,
-                  segment: f.segment,
-                  message: f.message,
-                  ...(f.segment === "TIER" && f.tierId ? { tierId: f.tierId } : {}),
-                  ...(f.segment === "RFM" && f.rfmLabel ? { rfmLabel: f.rfmLabel } : {}),
-                },
-                {
-                onSuccess: () => { toast.success("Campaign saved"); setF({ ...f, name: "", message: "" }); },
-                onError: (e) => toast.error(errMsg(e)),
-              },
-              )
-            }
-          >
-            Save campaign
+        <div className="flex gap-2">
+          <Button disabled={pending || !f.name.trim() || !f.message.trim()} onClick={submit}>
+            {editingId ? "Save" : "Create"}
           </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
         </div>
       </Card>
+      {reportId && data?.find((c) => c.id === reportId) && (
+        <CampaignReportPanel
+          branchId={branchId}
+          campaign={data.find((c) => c.id === reportId)!}
+          onClose={() => setReportId(null)}
+        />
+      )}
       <Card className="flex flex-col divide-y divide-border p-2">
         {isLoading ? (
           <Skeleton className="m-4 h-12" />
@@ -361,18 +679,44 @@ function Campaigns({ branchId }: { branchId: string | null }) {
                 </a>
                 <Button
                   size="sm"
+                  variant={reportId === c.id ? "default" : "outline"}
+                  onClick={() => setReportId(reportId === c.id ? null : c.id)}
+                >
+                  Report
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => loadEdit(c)}>
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
                   disabled={sendCampaign.isPending}
                   onClick={() =>
                     confirm(`Send "${c.name}" now to everyone in this audience?`) &&
                     sendCampaign.mutate(c.id, {
-                      onSuccess: (r) => toast.success(`Sent to ${r.sent}${r.failed ? `, ${r.failed} failed` : ""}`),
+                      onSuccess: (r) => {
+                        toast.success(`Sent to ${r.sent}${r.failed ? `, ${r.failed} failed` : ""}`);
+                        setReportId(c.id);
+                      },
                       onError: (e) => toast.error(errMsg(e)),
                     })
                   }
                 >
                   Send now
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => confirm(`Delete ${c.name}?`) && deleteCampaign.mutate(c.id)}>Delete</Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!confirm(`Delete ${c.name}?`)) return;
+                    deleteCampaign.mutate(c.id, {
+                      onSuccess: () => {
+                        if (editingId === c.id) reset();
+                      },
+                    });
+                  }}
+                >
+                  Delete
+                </Button>
               </div>
             </div>
           ))
@@ -383,7 +727,8 @@ function Campaigns({ branchId }: { branchId: string | null }) {
       <p className="text-xs text-muted-foreground">
         Email uses the restaurant SMTP settings. SMS and WhatsApp send through the provider saved in Operations
         when that channel is on; a <code>campaign.message</code> webhook still fires if one is subscribed.
-        Customers marked &ldquo;do not send marketing&rdquo; are always excluded.
+        WhatsApp/SMS delivery, read and failure counts appear in Report after a send (bulk platform status
+        callbacks fill delivered/read). Customers marked &ldquo;do not send marketing&rdquo; are always excluded.
       </p>
     </div>
   );
@@ -394,14 +739,19 @@ export default function MarketingPage() {
   const [tab, setTab] = useState<Tab>("coupons");
   return (
     <div className="flex flex-col gap-6">
-      <PromoNav />
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Marketing</h1>
-        <p className="text-sm text-muted-foreground">Coupons, happy hours and customer campaigns</p>
-      </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {TABS.map((t) => (
-          <button key={t} type="button" onClick={() => setTab(t)} className={cn("rounded-full border px-3.5 py-1 text-xs capitalize transition-colors", tab === t ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-secondary")}>
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={cn(
+              "rounded-full border px-3.5 py-1 text-xs capitalize transition-colors",
+              tab === t
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border text-muted-foreground hover:bg-secondary",
+            )}
+          >
             {t}
           </button>
         ))}

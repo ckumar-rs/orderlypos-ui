@@ -8,5 +8,5 @@ export const metadata: Metadata = publicMeta(
 );
 
 export default function SignupLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <div className="flex min-h-dvh flex-col">{children}</div>;
 }

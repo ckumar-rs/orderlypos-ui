@@ -1,8 +1,8 @@
 "use client";
 
 import { LayoutGrid, Plus } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { AddFloorDialog } from "@/components/tables/add-floor-dialog";
 import { EditableTableTile } from "@/components/tables/editable-table-tile";
 import { RenameFloorDialog } from "@/components/tables/rename-floor-dialog";
@@ -19,7 +19,8 @@ import { TableAnalyticsCard } from "@/components/tables/table-analytics-card";
 import { TableRequestsBar } from "@/components/tables/table-requests-bar";
 import { hasPermission, useCurrentUser } from "@/hooks/use-auth";
 import { useBranch } from "@/hooks/use-branch";
-import { useFloors, type RestaurantTable } from "@/hooks/use-tables";
+import { useDeleteFloor, useFloors, type RestaurantTable } from "@/hooks/use-tables";
+import { ApiError } from "@/lib/api";
 
 export default function TablesPage() {
   const { branchId } = useBranch();
@@ -28,6 +29,7 @@ export default function TablesPage() {
   const canManage = hasPermission(me?.user, "tables.manage");
   const floorsQuery = useFloors(branchId);
   const { data: floors } = floorsQuery;
+  const deleteFloor = useDeleteFloor(branchId);
   const { isLoading: branchLoading } = useBranch();
   const isLoading = floorsQuery.isLoading || branchLoading;
   const [activeFloorId, setActiveFloorId] = useState<string | undefined>(undefined);
@@ -88,19 +90,12 @@ export default function TablesPage() {
   return (
     <div className="flex flex-col gap-6">
       <TableRequestsBar branchId={branchId} />
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Tables</h1>
-          <p className="text-sm text-muted-foreground">
-            {editMode
-              ? "Drag tables to match your floor — changes save automatically"
-              : "Live floor status — tap a table to update it"}
-          </p>
-          <Link href="/tables/areas" className="text-sm underline">Indoor and outdoor areas</Link>
-          <Link href="/tables/split" className="text-sm underline">Split a table</Link>
-          <Link href="/tables/move" className="text-sm underline">Move a party</Link>
-          <Link href="/tables/history" className="text-sm underline">Table history</Link>
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <p className="text-sm text-muted-foreground">
+          {editMode
+            ? "Drag tables to match your floor — changes save automatically"
+            : "Live floor status — tap a table to update it"}
+        </p>
         {canManage && floors && floors.length > 0 && (
           <Button variant={editMode ? "default" : "outline"} size="sm" className="h-11 w-full sm:h-8 sm:w-auto" onClick={() => setEditMode((v) => !v)}>
             <LayoutGrid className="h-4 w-4" />
@@ -144,6 +139,25 @@ export default function TablesPage() {
                   <Button variant="outline" size="sm" onClick={openAddTable}>
                     <Plus className="h-4 w-4" />
                     Add table
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={deleteFloor.isPending || !activeFloor}
+                    onClick={() => {
+                      if (!activeFloor) return;
+                      if (!confirm(`Delete floor "${activeFloor.name}"?`)) return;
+                      deleteFloor.mutate(activeFloor.id, {
+                        onSuccess: () => {
+                          toast.success("Floor deleted");
+                          setActiveFloorId(undefined);
+                        },
+                        onError: (err) =>
+                          toast.error(err instanceof ApiError ? err.message : "Could not delete floor"),
+                      });
+                    }}
+                  >
+                    Delete floor
                   </Button>
                 </>
               )}

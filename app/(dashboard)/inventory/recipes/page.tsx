@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -77,7 +76,6 @@ export default function RecipesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div>
         <h1 className="text-2xl font-semibold">Recipes</h1>
         <p className="text-sm text-muted-foreground">

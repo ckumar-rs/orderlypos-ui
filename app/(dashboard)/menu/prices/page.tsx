@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { MenuSubpageShell } from "@/components/menu/menu-subpage-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,8 @@ interface PriceRule {
   isActive: boolean;
   stockBelow: string | number | null;
   demandQty: number | null;
+  categoryId?: string | null;
+  menuItemId?: string | null;
 }
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -34,6 +36,7 @@ export default function ScheduledPricesPage() {
     enabled: Boolean(branchId),
     queryFn: () => api.get<PriceRule[]>(`/menu/price-rules?branchId=${branchId}`),
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [percent, setPercent] = useState("-10");
   const [start, setStart] = useState("16:00");
@@ -42,8 +45,28 @@ export default function ScheduledPricesPage() {
   const [menuItemId, setMenuItemId] = useState("");
   const timed = (rules.data ?? []).filter((rule) => rule.stockBelow == null && rule.demandQty == null);
 
-  const save = () =>
-    api.post(`/menu/price-rules?branchId=${branchId}`, {
+  const resetForm = () => {
+    setEditingId(null);
+    setName("");
+    setPercent("-10");
+    setStart("16:00");
+    setEnd("19:00");
+    setCategoryId("");
+    setMenuItemId("");
+  };
+
+  const loadRule = (rule: PriceRule) => {
+    setEditingId(rule.id);
+    setName(rule.name);
+    setPercent(String(rule.percent));
+    setStart(rule.startTime ?? "16:00");
+    setEnd(rule.endTime ?? "19:00");
+    setCategoryId(rule.categoryId ?? "");
+    setMenuItemId(rule.menuItemId ?? "");
+  };
+
+  const save = () => {
+    const body = {
       name: name.trim(),
       percent: Number(percent),
       startTime: start,
@@ -51,24 +74,25 @@ export default function ScheduledPricesPage() {
       daysOfWeek: DAYS,
       categoryId: categoryId || null,
       menuItemId: menuItemId || null,
-    })
+    };
+    const request = editingId
+      ? api.put(`/menu/price-rules/${editingId}?branchId=${branchId}`, body)
+      : api.post(`/menu/price-rules?branchId=${branchId}`, body);
+    return request
       .then(() => {
-        toast.success("Scheduled price saved");
-        setName("");
+        toast.success(editingId ? "Scheduled price updated" : "Scheduled price saved");
+        resetForm();
         void qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] });
       })
       .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not save"));
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      <Link href="/menu" className="text-sm text-muted-foreground">Back to the menu</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Scheduled menu prices</h1>
-        <p className="text-sm text-muted-foreground">
-          This changes the dish price on the menu during the window. A happy-hour promotion still discounts the bill separately. A negative percent lowers the price.
-        </p>
-      </div>
-      <Card className="grid gap-3 p-4 md:grid-cols-3">
+    <MenuSubpageShell
+      title="Scheduled prices"
+      description="Changes the dish price on the menu during the window. Happy-hour bill promos stay separate. A negative percent lowers the price."
+    >
+      <Card className="grid gap-3 p-4 sm:p-5 md:grid-cols-3">
         <Input placeholder="Name, such as Happy hour mains" value={name} onChange={(e) => setName(e.target.value)} />
         <Input inputMode="decimal" aria-label="Percent" placeholder="Percent, such as -10" value={percent} onChange={(e) => setPercent(e.target.value)} />
         <Input type="time" aria-label="Starts" value={start} onChange={(e) => setStart(e.target.value)} />
@@ -85,7 +109,16 @@ export default function ScheduledPricesPage() {
             <option key={item.id} value={item.id}>{item.name}</option>
           ))}
         </select>
-        <Button type="button" disabled={!name.trim()} onClick={save}>Save schedule</Button>
+        <div className="flex gap-2">
+          {editingId && (
+            <Button type="button" variant="outline" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
+          <Button type="button" disabled={!name.trim()} onClick={save}>
+            {editingId ? "Save" : "Create schedule"}
+          </Button>
+        </div>
       </Card>
       <div className="grid gap-3 md:grid-cols-2">
         {timed.map((rule) => (
@@ -94,17 +127,22 @@ export default function ScheduledPricesPage() {
               <p className="font-medium">{rule.name}</p>
               <p className="text-sm text-muted-foreground">{Number(rule.percent)}% · {rule.startTime}–{rule.endTime}</p>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => api.delete(`/menu/price-rules/${rule.id}?branchId=${branchId}`).then(() => qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] }))}
-            >
-              Delete
-            </Button>
+            <div className="flex gap-1">
+              <Button type="button" size="sm" variant="outline" onClick={() => loadRule(rule)}>
+                Edit
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => api.delete(`/menu/price-rules/${rule.id}?branchId=${branchId}`).then(() => qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] }))}
+              >
+                Delete
+              </Button>
+            </div>
           </Card>
         ))}
       </div>
-    </div>
+    </MenuSubpageShell>
   );
 }

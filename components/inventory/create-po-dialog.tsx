@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useIngredients, useCreatePurchaseOrder, useSuppliers } from "@/hooks/use-inventory";
+import {
+  useIngredients,
+  useCreatePurchaseOrder,
+  useUpdatePurchaseOrder,
+  useSuppliers,
+  type PurchaseOrder,
+} from "@/hooks/use-inventory";
 import { ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 
@@ -28,14 +34,51 @@ interface Row {
 
 const emptyRow: Row = { ingredientId: "", quantityOrdered: "", unitCost: "" };
 
-export function CreatePoDialog({ branchId }: { branchId: string | null }) {
+function rowsFromPo(po: PurchaseOrder): Row[] {
+  return po.items.map((item) => ({
+    ingredientId: item.ingredientId,
+    quantityOrdered: String(item.quantityOrdered),
+    unitCost: String(item.unitCost),
+  }));
+}
+
+export function CreatePoDialog({
+  branchId,
+  purchaseOrder,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  branchId: string | null;
+  /** When set, dialog edits this draft PO instead of creating a new one. */
+  purchaseOrder?: PurchaseOrder | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const editing = !!purchaseOrder;
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
+
   const [supplierId, setSupplierId] = useState("");
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const { data: suppliers } = useSuppliers(branchId);
   const { data: ingredients } = useIngredients(branchId);
   const createPo = useCreatePurchaseOrder(branchId);
+  const updatePo = useUpdatePurchaseOrder(branchId);
+  const pending = createPo.isPending || updatePo.isPending;
+
+  useEffect(() => {
+    if (!open) return;
+    if (purchaseOrder) {
+      setSupplierId(purchaseOrder.supplierId);
+      const next = rowsFromPo(purchaseOrder);
+      setRows(next.length ? next : [{ ...emptyRow }]);
+    } else {
+      setSupplierId("");
+      setRows([{ ...emptyRow }]);
+    }
+  }, [open, purchaseOrder]);
 
   const updateRow = (index: number, patch: Partial<Row>) => {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -54,36 +97,54 @@ export function CreatePoDialog({ branchId }: { branchId: string | null }) {
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
-    createPo.mutate(
-      {
-        supplierId,
-        items: rows.map((r) => ({
-          ingredientId: r.ingredientId,
-          quantityOrdered: Number(r.quantityOrdered),
-          unitCost: Number(r.unitCost),
-        })),
-      },
-      {
-        onSuccess: (po) => {
-          toast.success(`${po.poNumber} created`);
-          setOpen(false);
-          setSupplierId("");
-          setRows([{ ...emptyRow }]);
-          router.push(`/inventory/purchase-orders/${po.id}`);
+    const dto = {
+      supplierId,
+      items: rows.map((r) => ({
+        ingredientId: r.ingredientId,
+        quantityOrdered: Number(r.quantityOrdered),
+        unitCost: Number(r.unitCost),
+      })),
+    };
+
+    if (editing && purchaseOrder) {
+      updatePo.mutate(
+        { id: purchaseOrder.id, dto },
+        {
+          onSuccess: (po) => {
+            toast.success(`${po.poNumber} updated`);
+            setOpen(false);
+          },
+          onError: (err) =>
+            toast.error(err instanceof ApiError ? err.message : "Could not update purchase order"),
         },
-        onError: (err) =>
-          toast.error(err instanceof ApiError ? err.message : "Could not create purchase order"),
+      );
+      return;
+    }
+
+    createPo.mutate(dto, {
+      onSuccess: (po) => {
+        toast.success(`${po.poNumber} created`);
+        setOpen(false);
+        setSupplierId("");
+        setRows([{ ...emptyRow }]);
+        router.push(`/inventory/purchase-orders/${po.id}`);
       },
-    );
+      onError: (err) =>
+        toast.error(err instanceof ApiError ? err.message : "Could not create purchase order"),
+    });
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm">New purchase order</Button>} />
+      {!editing && controlledOpen === undefined ? (
+        <DialogTrigger render={<Button size="sm">New purchase order</Button>} />
+      ) : null}
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>New purchase order</DialogTitle>
+            <DialogTitle>
+              {editing ? `Edit ${purchaseOrder?.poNumber ?? "purchase order"}` : "New purchase order"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-2">
@@ -170,8 +231,14 @@ export function CreatePoDialog({ branchId }: { branchId: string | null }) {
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!canSubmit || createPo.isPending}>
-              {createPo.isPending ? "Creating…" : "Create purchase order"}
+            <Button type="submit" disabled={!canSubmit || pending}>
+              {pending
+                ? editing
+                  ? "Saving…"
+                  : "Creating…"
+                : editing
+                  ? "Save changes"
+                  : "Create purchase order"}
             </Button>
           </DialogFooter>
         </form>

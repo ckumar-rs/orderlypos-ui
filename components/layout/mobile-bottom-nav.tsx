@@ -10,9 +10,7 @@ import { useI18n } from "@/lib/i18n/context";
 import { useNavBadges } from "@/hooks/use-nav-badges";
 import { NAV_ITEMS } from "./nav-items";
 
-// The screens staff jump between all shift long, in priority order. Whatever
-// the signed-in role can't open is skipped, so a kitchen-only login still gets
-// a full bar. Everything else lives behind "More" (the existing drawer).
+// Floor screens only — Inventory / Settings open from More in their own tab.
 const PRIMARY_HREFS = ["/pos", "/orders", "/tables", "/kds", "/dashboard"];
 const PRIMARY_COUNT = 4;
 

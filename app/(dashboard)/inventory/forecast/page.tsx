@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,13 +33,7 @@ export default function ForecastPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Paid-sales velocity, then a Hugging Face or NVIDIA model if you stored one in Settings
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <Button
           size="sm"
           disabled={generate.isPending}
@@ -62,8 +55,6 @@ export default function ForecastPage() {
           {generate.isPending ? "Generating…" : "Generate forecast"}
         </Button>
       </div>
-
-      <InventoryTabs />
 
       <Card className="overflow-hidden p-0">
         {isLoading ? (

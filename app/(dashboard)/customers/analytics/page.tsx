@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CustomerTabs } from "@/components/customers/customer-tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
 import { api } from "@/lib/api";
@@ -28,7 +27,6 @@ export default function CustomerAnalyticsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <CustomerTabs />
       <div>
         <h1 className="text-2xl font-semibold">Customer analytics</h1>
         <p className="text-sm text-muted-foreground">

@@ -44,13 +44,23 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  nativeButton,
+  render,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // Base UI defaults to a native <button>. When callers swap the host via
+  // `render` (Next Link, <a>, etc.) we must opt out or the console warns and
+  // semantics break for forms/accessibility.
+  const resolvedNativeButton =
+    nativeButton ?? (render == null ? undefined : false)
+
   return (
     <ButtonPrimitive
       data-slot="button"
       data-variant={variant}
       className={cn(buttonVariants({ variant, size, className }))}
+      nativeButton={resolvedNativeButton}
+      render={render}
       {...props}
     />
   )

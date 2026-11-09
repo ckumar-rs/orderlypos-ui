@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { PromoNav } from "@/components/marketing/promo-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { flattenCategories, useCategories } from "@/hooks/use-menu";
 import { useBranch } from "@/hooks/use-branch";
-import { useMarketingActions, usePromotions } from "@/hooks/use-marketing";
+import { useMarketingActions, usePromotions, type PromotionRow } from "@/hooks/use-marketing";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -18,17 +17,69 @@ export default function QuantityPromotionsPage() {
   const { branchId } = useBranch();
   const categories = useCategories(branchId);
   const promotions = usePromotions(branchId);
-  const { createPromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const { createPromotion, updatePromotion, promotionActive, deletePromotion } = useMarketingActions(branchId);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [buy, setBuy] = useState("1");
   const [get, setGet] = useState("1");
   const [categoryId, setCategoryId] = useState("");
   const flat = flattenCategories(categories.data ?? []);
   const rules = (promotions.data ?? []).filter((row) => row.kind === "BOGO" && row.allDay);
+  const pending = createPromotion.isPending || updatePromotion.isPending;
+
+  const reset = () => {
+    setEditingId(null);
+    setName("");
+    setBuy("1");
+    setGet("1");
+    setCategoryId("");
+  };
+
+  const loadEdit = (row: PromotionRow) => {
+    setEditingId(row.id);
+    setName(row.name);
+    setBuy(String(row.buyQuantity ?? 1));
+    setGet(String(row.getQuantity ?? 1));
+    setCategoryId(row.categoryId ?? "");
+  };
+
+  const submit = () => {
+    const dto = {
+      name: name.trim(),
+      kind: "BOGO",
+      value: 0,
+      buyQuantity: Number(buy) || 1,
+      getQuantity: Number(get) || 1,
+      categoryId: categoryId || null,
+      allDay: true,
+      daysOfWeek: DAYS,
+      startTime: "00:00",
+      endTime: "23:59",
+    };
+    if (editingId) {
+      updatePromotion.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Quantity promotion updated");
+            reset();
+          },
+          onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not update"),
+        },
+      );
+      return;
+    }
+    createPromotion.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Quantity promotion created");
+        reset();
+      },
+      onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
-      <PromoNav />
       <div>
         <h1 className="text-2xl font-semibold">Buy and get</h1>
         <p className="text-sm text-muted-foreground">
@@ -50,35 +101,16 @@ export default function QuantityPromotionsPage() {
             <option key={category.id} value={category.id}>{category.name}</option>
           ))}
         </select>
-        <Button
-          type="button"
-          disabled={createPromotion.isPending || !name.trim()}
-          onClick={() =>
-            createPromotion.mutate(
-              {
-                name: name.trim(),
-                kind: "BOGO",
-                value: 0,
-                buyQuantity: Number(buy) || 1,
-                getQuantity: Number(get) || 1,
-                categoryId: categoryId || null,
-                allDay: true,
-                daysOfWeek: DAYS,
-                startTime: "00:00",
-                endTime: "23:59",
-              },
-              {
-                onSuccess: () => {
-                  toast.success("Quantity promotion saved");
-                  setName("");
-                },
-                onError: (error) => toast.error(error instanceof ApiError ? error.message : "Could not save"),
-              },
-            )
-          }
-        >
-          Save promotion
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" disabled={pending || !name.trim()} onClick={submit}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="grid gap-3 md:grid-cols-2">
         {rules.map((row) => (
@@ -91,10 +123,25 @@ export default function QuantityPromotionsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              <Button size="sm" variant="outline" type="button" onClick={() => loadEdit(row)}>
+                Edit
+              </Button>
               <Button size="sm" variant="outline" type="button" onClick={() => promotionActive.mutate({ id: row.id, isActive: !row.isActive })}>
                 {row.isActive ? "Pause" : "Resume"}
               </Button>
-              <Button size="sm" variant="outline" type="button" onClick={() => confirm(`Delete ${row.name}?`) && deletePromotion.mutate(row.id)}>
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  if (!confirm(`Delete ${row.name}?`)) return;
+                  deletePromotion.mutate(row.id, {
+                    onSuccess: () => {
+                      if (editingId === row.id) reset();
+                    },
+                  });
+                }}
+              >
                 Delete
               </Button>
             </div>

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,13 +26,20 @@ export default function UnitsPage() {
     enabled: Boolean(branchId),
     queryFn: () => api.get<{ builtin: UnitRow[]; custom: UnitRow[] }>(`/inventory/units?branchId=${branchId}`),
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [fromUnit, setFromUnit] = useState("PACK");
   const [toUnit, setToUnit] = useState("PIECE");
   const [factor, setFactor] = useState("6");
 
+  const reset = () => {
+    setEditingId(null);
+    setFromUnit("PACK");
+    setToUnit("PIECE");
+    setFactor("6");
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div>
         <h1 className="text-2xl font-semibold">Units</h1>
         <p className="text-sm text-muted-foreground">
@@ -68,10 +74,28 @@ export default function UnitsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={() => {
+                    if (!row.id) return;
+                    setEditingId(row.id);
+                    setFromUnit(row.fromUnit);
+                    setToUnit(row.toUnit);
+                    setFactor(String(row.factor));
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
                   onClick={() =>
                     api
                       .delete(`/inventory/units/${row.id}?branchId=${branchId}`)
-                      .then(() => qc.invalidateQueries({ queryKey: ["unit-conversions", branchId] }))
+                      .then(() => {
+                        if (editingId === row.id) reset();
+                        qc.invalidateQueries({ queryKey: ["unit-conversions", branchId] });
+                      })
                       .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not remove it"))
                   }
                 >
@@ -86,13 +110,19 @@ export default function UnitsPage() {
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          api
-            .post(`/inventory/units?branchId=${branchId}`, { fromUnit, toUnit, factor: Number(factor) })
+          const body = { fromUnit, toUnit, factor: Number(factor) };
+          const req = editingId
+            ? api.patch(`/inventory/units/${editingId}?branchId=${branchId}`, body)
+            : api.post(`/inventory/units?branchId=${branchId}`, body);
+          req
             .then(() => {
-              toast.success("Conversion saved");
+              toast.success(editingId ? "Conversion updated" : "Conversion saved");
+              reset();
               qc.invalidateQueries({ queryKey: ["unit-conversions", branchId] });
             })
-            .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not save the conversion"));
+            .catch((error) =>
+              toast.error(error instanceof ApiError ? error.message : "Could not save the conversion"),
+            );
         }}
       >
         <label className="flex flex-col gap-1 text-sm">
@@ -115,7 +145,12 @@ export default function UnitsPage() {
           Factor
           <Input value={factor} onChange={(event) => setFactor(event.target.value)} inputMode="decimal" className="w-28" />
         </label>
-        <Button type="submit">Save conversion</Button>
+        <Button type="submit">{editingId ? "Save" : "Create"}</Button>
+        {editingId && (
+          <Button type="button" variant="outline" onClick={reset}>
+            Cancel
+          </Button>
+        )}
       </form>
     </div>
   );

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,7 +24,6 @@ export default function NetworkPage() {
   }, []);
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-2xl font-semibold">Network</h1>
         <p className="text-sm text-muted-foreground">

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TableSectionNav } from "@/components/tables/table-section-nav";
 import { useBranch } from "@/hooks/use-branch";
 import { useFloors } from "@/hooks/use-tables";
 import { api } from "@/lib/api";
@@ -34,11 +33,7 @@ export default function TableHistoryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <TableSectionNav />
-      <div>
-        <h1 className="text-2xl font-semibold">Table history</h1>
-        <p className="text-sm text-muted-foreground">Every bill on the selected table, with guests, how long it ran, and what it took.</p>
-      </div>
+      <p className="text-sm text-muted-foreground">Every bill on the selected table, with guests, how long it ran, and what it took.</p>
       <select
         aria-label="Table"
         className="h-10 max-w-sm rounded-md border border-input bg-background px-2"

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -144,12 +143,6 @@ export default function WhatsAppCatalogPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-      <SettingsTabs />
-
       <div className="flex max-w-3xl flex-col gap-2">
         <h2 className="text-lg font-semibold text-foreground">WhatsApp catalog</h2>
         <p className="text-sm text-muted-foreground">

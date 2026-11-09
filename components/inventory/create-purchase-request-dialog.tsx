@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +15,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreatePurchaseRequest, useIngredients } from "@/hooks/use-inventory";
+import {
+  useCreatePurchaseRequest,
+  useIngredients,
+  useUpdatePurchaseRequest,
+  type PurchaseRequest,
+} from "@/hooks/use-inventory";
 import { ApiError } from "@/lib/api";
 
 interface Row {
@@ -25,12 +30,49 @@ interface Row {
 
 const emptyRow: Row = { ingredientId: "", quantityRequested: "" };
 
-export function CreatePurchaseRequestDialog({ branchId }: { branchId: string | null }) {
+export function CreatePurchaseRequestDialog({
+  branchId,
+  editing = null,
+  onCloseEdit,
+}: {
+  branchId: string | null;
+  editing?: PurchaseRequest | null;
+  onCloseEdit?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const { data: ingredients } = useIngredients(branchId);
   const createRequest = useCreatePurchaseRequest(branchId);
+  const updateRequest = useUpdatePurchaseRequest(branchId);
+  const isEdit = Boolean(editing);
+
+  useEffect(() => {
+    if (!editing) return;
+    setNotes(editing.notes ?? "");
+    setRows(
+      editing.items.length > 0
+        ? editing.items.map((item) => ({
+            ingredientId: item.ingredientId,
+            quantityRequested: String(Number(item.quantityRequested)),
+          }))
+        : [{ ...emptyRow }],
+    );
+    setOpen(true);
+  }, [editing]);
+
+  const reset = () => {
+    setNotes("");
+    setRows([{ ...emptyRow }]);
+  };
+
+  const close = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      reset();
+      onCloseEdit?.();
+    }
+  };
 
   const updateRow = (index: number, patch: Partial<Row>) => {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -38,38 +80,49 @@ export function CreatePurchaseRequestDialog({ branchId }: { branchId: string | n
 
   const canSubmit =
     rows.length > 0 && rows.every((r) => r.ingredientId && Number(r.quantityRequested) > 0);
+  const pending = createRequest.isPending || updateRequest.isPending;
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
-    createRequest.mutate(
-      {
-        notes: notes || undefined,
-        items: rows.map((r) => ({
-          ingredientId: r.ingredientId,
-          quantityRequested: Number(r.quantityRequested),
-        })),
-      },
-      {
-        onSuccess: (request) => {
-          toast.success(`${request.requestNumber} created`);
-          setOpen(false);
-          setNotes("");
-          setRows([{ ...emptyRow }]);
+    const dto = {
+      notes: notes || undefined,
+      items: rows.map((r) => ({
+        ingredientId: r.ingredientId,
+        quantityRequested: Number(r.quantityRequested),
+      })),
+    };
+    if (editing) {
+      updateRequest.mutate(
+        { id: editing.id, dto },
+        {
+          onSuccess: (request) => {
+            toast.success(`${request.requestNumber} updated`);
+            close(false);
+          },
+          onError: (err) =>
+            toast.error(err instanceof ApiError ? err.message : "Could not update purchase request"),
         },
-        onError: (err) =>
-          toast.error(err instanceof ApiError ? err.message : "Could not create purchase request"),
+      );
+      return;
+    }
+    createRequest.mutate(dto, {
+      onSuccess: (request) => {
+        toast.success(`${request.requestNumber} created`);
+        close(false);
       },
-    );
+      onError: (err) =>
+        toast.error(err instanceof ApiError ? err.message : "Could not create purchase request"),
+    });
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm">New request</Button>} />
+    <Dialog open={open} onOpenChange={close}>
+      {!editing && <DialogTrigger render={<Button size="sm">New request</Button>} />}
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>New purchase request</DialogTitle>
+            <DialogTitle>{isEdit ? `Edit ${editing?.requestNumber}` : "New purchase request"}</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-2">
@@ -131,8 +184,8 @@ export function CreatePurchaseRequestDialog({ branchId }: { branchId: string | n
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!canSubmit || createRequest.isPending}>
-              {createRequest.isPending ? "Creating…" : "Create request"}
+            <Button type="submit" disabled={!canSubmit || pending}>
+              {pending ? "Saving…" : isEdit ? "Save changes" : "Create request"}
             </Button>
           </DialogFooter>
         </form>

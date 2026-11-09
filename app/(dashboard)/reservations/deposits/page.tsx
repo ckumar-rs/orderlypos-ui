@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -42,13 +41,9 @@ export default function ReservationDepositsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/reservations" className="text-sm text-muted-foreground">Reservations</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Reservation deposits</h1>
-        <p className="text-sm text-muted-foreground">
-          Cash, card, and UPI are recorded as a house-account advance when the money is received. Wallet takes store credit. Refund gives it back. Forfeit keeps it. A no-show forfeits a held deposit, then uses the wallet, then the house account for the rest of the fee.
+      <p className="text-sm text-muted-foreground">
+          Payment methods you enable in Settings are recorded as a house-account advance when the money is received. Wallet takes store credit. Refund gives it back. Forfeit keeps it. A no-show forfeits a held deposit, then uses the wallet, then the house account for the rest of the fee.
         </p>
-      </div>
       <Table>
         <TableHeader>
           <TableRow>

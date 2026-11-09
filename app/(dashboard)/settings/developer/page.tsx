@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ApiError, api } from "@/lib/api";
@@ -21,7 +20,6 @@ export default function DeveloperPage() {
   const [result, setResult] = useState("");
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-lg font-semibold">Developer</h1>
         <p className="text-sm text-muted-foreground">Staff routes use the signed-in session. GraphQL reads the menu, open orders, a customer, the franchise scoreboard, and devices, and can recall a kitchen ticket.</p>

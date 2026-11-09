@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +15,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateQuotation, useIngredients, useSuppliers } from "@/hooks/use-inventory";
+import {
+  useCreateQuotation,
+  useIngredients,
+  useSuppliers,
+  useUpdateQuotation,
+  type SupplierQuotation,
+} from "@/hooks/use-inventory";
 import { ApiError } from "@/lib/api";
 
 interface Row {
@@ -26,13 +32,51 @@ interface Row {
 
 const emptyRow: Row = { ingredientId: "", quantityQuoted: "", unitPrice: "" };
 
-export function CreateQuotationDialog({ branchId }: { branchId: string | null }) {
+export function CreateQuotationDialog({
+  branchId,
+  editing = null,
+  onCloseEdit,
+}: {
+  branchId: string | null;
+  editing?: SupplierQuotation | null;
+  onCloseEdit?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const { data: suppliers } = useSuppliers(branchId);
   const { data: ingredients } = useIngredients(branchId);
   const createQuotation = useCreateQuotation(branchId);
+  const updateQuotation = useUpdateQuotation(branchId);
+  const isEdit = Boolean(editing);
+
+  useEffect(() => {
+    if (!editing) return;
+    setSupplierId(editing.supplier.id);
+    setRows(
+      editing.items.length > 0
+        ? editing.items.map((item) => ({
+            ingredientId: item.ingredientId,
+            quantityQuoted: String(Number(item.quantityQuoted)),
+            unitPrice: String(Number(item.unitPrice)),
+          }))
+        : [{ ...emptyRow }],
+    );
+    setOpen(true);
+  }, [editing]);
+
+  const reset = () => {
+    setSupplierId("");
+    setRows([{ ...emptyRow }]);
+  };
+
+  const close = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      reset();
+      onCloseEdit?.();
+    }
+  };
 
   const updateRow = (index: number, patch: Partial<Row>) => {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -42,39 +86,52 @@ export function CreateQuotationDialog({ branchId }: { branchId: string | null })
     !!supplierId &&
     rows.length > 0 &&
     rows.every((r) => r.ingredientId && Number(r.quantityQuoted) > 0 && Number(r.unitPrice) >= 0);
+  const pending = createQuotation.isPending || updateQuotation.isPending;
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSubmit) return;
-    createQuotation.mutate(
-      {
-        supplierId,
-        items: rows.map((r) => ({
-          ingredientId: r.ingredientId,
-          quantityQuoted: Number(r.quantityQuoted),
-          unitPrice: Number(r.unitPrice),
-        })),
-      },
-      {
-        onSuccess: (quotation) => {
-          toast.success(`${quotation.quotationNumber} recorded`);
-          setOpen(false);
-          setSupplierId("");
-          setRows([{ ...emptyRow }]);
+    const dto = {
+      supplierId,
+      items: rows.map((r) => ({
+        ingredientId: r.ingredientId,
+        quantityQuoted: Number(r.quantityQuoted),
+        unitPrice: Number(r.unitPrice),
+      })),
+    };
+    if (editing) {
+      updateQuotation.mutate(
+        { id: editing.id, dto },
+        {
+          onSuccess: (quotation) => {
+            toast.success(`${quotation.quotationNumber} updated`);
+            close(false);
+          },
+          onError: (err) =>
+            toast.error(err instanceof ApiError ? err.message : "Could not update quotation"),
         },
-        onError: (err) =>
-          toast.error(err instanceof ApiError ? err.message : "Could not record quotation"),
+      );
+      return;
+    }
+    createQuotation.mutate(dto, {
+      onSuccess: (quotation) => {
+        toast.success(`${quotation.quotationNumber} recorded`);
+        close(false);
       },
-    );
+      onError: (err) =>
+        toast.error(err instanceof ApiError ? err.message : "Could not record quotation"),
+    });
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm">New quotation</Button>} />
+    <Dialog open={open} onOpenChange={close}>
+      {!editing && <DialogTrigger render={<Button size="sm">New quotation</Button>} />}
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>Record a supplier quotation</DialogTitle>
+            <DialogTitle>
+              {isEdit ? `Edit ${editing?.quotationNumber}` : "Record a supplier quotation"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-2">
@@ -156,8 +213,8 @@ export function CreateQuotationDialog({ branchId }: { branchId: string | null })
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={!canSubmit || createQuotation.isPending}>
-              {createQuotation.isPending ? "Saving…" : "Save quotation"}
+            <Button type="submit" disabled={!canSubmit || pending}>
+              {pending ? "Saving…" : isEdit ? "Save changes" : "Save quotation"}
             </Button>
           </DialogFooter>
         </form>

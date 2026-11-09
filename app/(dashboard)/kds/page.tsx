@@ -8,7 +8,6 @@ import { PerformanceWidget } from "@/components/kds/performance-widget";
 import { IncomingOrderCard } from "@/components/kds/incoming-order-card";
 import { LiveStatus } from "@/components/kds/live-status";
 import { ExpoBoard } from "@/components/kds/expo-board";
-import { KdsNav } from "@/components/kds/kds-nav";
 import { TicketCard } from "@/components/kds/ticket-card";
 import { QueryError } from "@/components/ui/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -79,18 +78,11 @@ export default function KdsPage() {
 
   return (
     <div className="flex min-h-[calc(100dvh-10rem)] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
-      <div>
-        <h1 className="text-2xl font-semibold sm:text-[32px] tracking-tight text-foreground">
-          Kitchen Display
-        </h1>
-        <p className="text-sm text-muted-foreground">Live order tickets by status</p>
-        {servingCopy.data && (
-          <p className="mt-2 text-sm text-warning">
-            Showing the copy saved on this screen. Status changes stay here and send when the server is back.
-          </p>
-        )}
-      </div>
-      <KdsNav />
+      {servingCopy.data ? (
+        <p className="text-sm text-warning">
+          Showing the copy saved on this screen. Status changes stay here and send when the server is back.
+        </p>
+      ) : null}
 
       <LiveStatus />
       <KitchenRush branchId={branchId} />

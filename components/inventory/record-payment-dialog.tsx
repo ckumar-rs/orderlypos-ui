@@ -15,10 +15,11 @@ import { Input } from "@/components/ui/input";
 import { PaymentMethodButtons } from "@/components/pos/payment-method-buttons";
 import { Label } from "@/components/ui/label";
 import { useRecordSupplierPayment, type SupplierInvoice } from "@/hooks/use-inventory";
+import { useSettings } from "@/hooks/use-settings";
 import { ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 
-const METHODS = ["CASH", "CARD", "UPI", "BANK_TRANSFER", "WALLET", "OTHER"] as const;
+const METHODS = ["UPI", "CASH", "CARD", "BANK_TRANSFER", "WALLET", "OTHER"] as const;
 
 export function RecordPaymentDialog({
   branchId,
@@ -30,7 +31,13 @@ export function RecordPaymentDialog({
   const [open, setOpen] = useState(false);
   const remaining = Number(invoice.totalAmount) - Number(invoice.amountPaid);
   const [amount, setAmount] = useState(() => String(remaining));
-  const [method, setMethod] = useState<(typeof METHODS)[number]>("CASH");
+  const { data: settings } = useSettings(branchId);
+  const cashLabel = settings?.restaurant.cashLabel?.trim() || "Cash";
+  const preferred = (settings?.restaurant.preferredPaymentMethod ?? "UPI") as
+    (typeof METHODS)[number];
+  const [method, setMethod] = useState<(typeof METHODS)[number]>(
+    METHODS.includes(preferred) ? preferred : "UPI",
+  );
   const [reference, setReference] = useState("");
   const recordPayment = useRecordSupplierPayment(branchId);
 
@@ -84,7 +91,13 @@ export function RecordPaymentDialog({
 
           <div className="flex flex-col gap-2">
             <Label>Method</Label>
-            <PaymentMethodButtons methods={METHODS} value={method} onChange={setMethod} label="Payment method" />
+            <PaymentMethodButtons
+              methods={METHODS}
+              value={method}
+              onChange={setMethod}
+              label="Payment method"
+              cashLabel={cashLabel}
+            />
           </div>
 
           <div className="flex flex-col gap-2">

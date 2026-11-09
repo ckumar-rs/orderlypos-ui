@@ -62,6 +62,14 @@ export function useUpdateFloor(branchId: string | null) {
   });
 }
 
+export function useDeleteFloor(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/tables/floors/${id}?branchId=${branchId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["floors", branchId] }),
+  });
+}
+
 export function useCreateTable(branchId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({

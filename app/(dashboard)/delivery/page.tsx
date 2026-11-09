@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DeliveryMap } from "@/components/delivery/delivery-map";
+import { DeliveryTrackingSettings } from "@/components/delivery/delivery-tracking-settings";
+import { LiveMapPanel } from "@/components/delivery/live-map-panel";
 import { FoodPlatformBadge } from "@/components/orders/channel-badges";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,12 +15,14 @@ import { useCurrentUser } from "@/hooks/use-auth";
 import {
   useDeliveries,
   useDeliveryActions,
+  useDeliveryTrail,
   useDrivers,
   useZoneActions,
   useZones,
   type DeliveryOrder,
   type DeliveryStatus,
 } from "@/hooks/use-delivery";
+import { useSettings } from "@/hooks/use-settings";
 import { ApiError, api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -38,17 +42,33 @@ function DeliveryCard({ order, branchId }: { order: DeliveryOrder; branchId: str
   const { data: drivers } = useDrivers(branchId);
   const { assign, setStatus, shareLocation } = useDeliveryActions(branchId);
   const me = useCurrentUser();
-  const trail = useQuery({
-    queryKey: ["delivery-trail", branchId, order.id],
-    enabled: Boolean(branchId),
-    queryFn: () =>
-      api.get<{ trackingToken: string | null; pings: Array<{ lat: string; lng: string; recordedAt: string }> }>(
-        `/delivery/${order.id}/trail?branchId=${branchId}`,
-      ),
-  });
+  const [showReplay, setShowReplay] = useState(false);
+  const trail = useDeliveryTrail(branchId, showReplay ? order.id : null);
   const status = order.deliveryStatus ?? "UNASSIGNED";
   const move = (next: DeliveryStatus) =>
     setStatus.mutate({ orderId: order.id, status: next }, { onError: (e) => toast.error(errMsg(e)) });
+  const replayPath = useMemo(
+    () => (trail.data?.pings ?? []).map((p) => ({ lat: p.lat, lng: p.lng })),
+    [trail.data?.pings],
+  );
+  const replayMarkers = useMemo(() => {
+    const markers = [];
+    const b = trail.data?.branch;
+    if (b?.lat != null && b?.lng != null) {
+      markers.push({ id: "branch", lat: b.lat, lng: b.lng, label: "Branch", tone: "branch" as const });
+    }
+    const last = trail.data?.pings?.at(-1);
+    if (last) {
+      markers.push({
+        id: "driver",
+        lat: last.lat,
+        lng: last.lng,
+        label: "Latest ping",
+        tone: "driver" as const,
+      });
+    }
+    return markers;
+  }, [trail.data]);
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -83,33 +103,61 @@ function DeliveryCard({ order, branchId }: { order: DeliveryOrder; branchId: str
         {order.scheduledFor && ` · scheduled ${time(order.scheduledFor)}`}
       </p>
       {order.notes && <p className="text-xs italic text-muted-foreground">{order.notes}</p>}
-      {order.driverLat && order.driverLng && (
+      {order.driverLat && order.driverLng && !showReplay && (
         <div className="overflow-hidden rounded-lg border border-border">
-          <iframe
-            title={`Driver location for ${order.orderNumber}`}
+          <DeliveryMap
+            markers={[
+              {
+                id: order.id,
+                lat: Number(order.driverLat),
+                lng: Number(order.driverLng),
+                label: `#${order.orderNumber}`,
+                tone: "driver",
+              },
+            ]}
             className="h-40 w-full"
-            src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(order.driverLng) - 0.02}%2C${Number(order.driverLat) - 0.02}%2C${Number(order.driverLng) + 0.02}%2C${Number(order.driverLat) + 0.02}&layer=mapnik&marker=${order.driverLat}%2C${order.driverLng}`}
           />
           <p className="px-2 py-1 text-[11px] text-muted-foreground">
-            Driver shared this device's location
-            {order.driverLocationAt ? ` at ${time(order.driverLocationAt)}` : ""}. The map updates while the delivery is open.
+            Driver shared this device&apos;s location
+            {order.driverLocationAt ? ` at ${time(order.driverLocationAt)}` : ""}.
           </p>
         </div>
       )}
-      {trail.data && trail.data.pings.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          <p>
-            Trail ({trail.data.pings.length} points)
-            {trail.data.trackingToken ? ` · public /api/v1/public/track/${trail.data.trackingToken}` : ""}
-          </p>
-          <p className="font-mono">
-            {trail.data.pings
-              .slice(-8)
-              .map((ping) => `${Number(ping.lat).toFixed(5)},${Number(ping.lng).toFixed(5)}`)
-              .join(" → ")}
+      {showReplay && (
+        <div className="overflow-hidden rounded-lg border border-border">
+          {trail.isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : (
+            <DeliveryMap
+              markers={replayMarkers}
+              path={replayPath}
+              radiusMeters={
+                trail.data?.branch?.lat != null && (trail.data.branch.radiusKm ?? 0) > 0
+                  ? trail.data.branch.radiusKm * 1000
+                  : null
+              }
+              className="h-48 w-full"
+            />
+          )}
+          <p className="px-2 py-1 text-[11px] text-muted-foreground">
+            Route replay · {trail.data?.pings.length ?? 0} pings
+            {trail.data?.trackingToken ? (
+              <>
+                {" "}
+                · guest link{" "}
+                <a className="underline" href={`/track/${trail.data.trackingToken}`} target="_blank" rel="noreferrer">
+                  /track/…
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
       )}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => setShowReplay((v) => !v)}>
+          {showReplay ? "Hide route" : "Replay route"}
+        </Button>
+      </div>
       <div className="flex flex-wrap gap-2">
         {["RAPIDO", "DUNZO", "SHADOWFAX"].map((provider) => (
           <Button
@@ -197,28 +245,45 @@ function DeliveryCard({ order, branchId }: { order: DeliveryOrder; branchId: str
 function ZonesTab({ branchId }: { branchId: string | null }) {
   const { data: zones, isLoading } = useZones(branchId);
   const { create, remove, update } = useZoneActions(branchId);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", fee: "40", minOrderAmount: "0", etaMinutes: "45", pincodes: "" });
+
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({ name: "", fee: "40", minOrderAmount: "0", etaMinutes: "45", pincodes: "" });
+  };
 
   const submit = () => {
     const pincodes = form.pincodes.split(/[\s,]+/).filter(Boolean);
     if (!form.name.trim() || pincodes.length === 0) return toast.error("Enter a name and at least one pincode");
-    create.mutate(
-      {
-        name: form.name.trim(),
-        fee: form.fee,
-        minOrderAmount: form.minOrderAmount,
-        etaMinutes: Number(form.etaMinutes),
-        pincodes,
-        isActive: true,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Zone added");
-          setForm({ ...form, name: "", pincodes: "" });
+    const dto = {
+      name: form.name.trim(),
+      fee: form.fee,
+      minOrderAmount: form.minOrderAmount,
+      etaMinutes: Number(form.etaMinutes),
+      pincodes,
+      isActive: true,
+    };
+    if (editingId) {
+      update.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Zone updated");
+            resetForm();
+          },
+          onError: (e) => toast.error(errMsg(e)),
         },
-        onError: (e) => toast.error(errMsg(e)),
+      );
+      return;
+    }
+    create.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Zone added");
+        resetForm();
       },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
   };
 
   return (
@@ -229,9 +294,16 @@ function ZonesTab({ branchId }: { branchId: string | null }) {
         <Input placeholder="Min order" inputMode="decimal" value={form.minOrderAmount} onChange={(e) => setForm({ ...form, minOrderAmount: e.target.value })} />
         <Input placeholder="ETA (min)" inputMode="numeric" value={form.etaMinutes} onChange={(e) => setForm({ ...form, etaMinutes: e.target.value })} />
         <Input placeholder="Pincodes, comma separated" value={form.pincodes} onChange={(e) => setForm({ ...form, pincodes: e.target.value })} />
-        <div className="sm:col-span-2 lg:col-span-5">
-          <Button onClick={submit} disabled={create.isPending}>Add zone</Button>
-          <p className="mt-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
+          {editingId && (
+            <Button type="button" variant="outline" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={submit} disabled={create.isPending || update.isPending}>
+            {editingId ? "Save zone" : "Add zone"}
+          </Button>
+          <p className="mt-2 w-full text-xs text-muted-foreground">
             Until you add a zone, delivery orders are accepted from anywhere with no fee. Once a zone exists, only
             its pincodes can order delivery.
           </p>
@@ -251,6 +323,22 @@ function ZonesTab({ branchId }: { branchId: string | null }) {
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingId(z.id);
+                    setForm({
+                      name: z.name,
+                      fee: String(z.fee),
+                      minOrderAmount: String(z.minOrderAmount),
+                      etaMinutes: String(z.etaMinutes),
+                      pincodes: z.pincodes.join(", "),
+                    });
+                  }}
+                >
+                  Edit
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -278,17 +366,23 @@ function ZonesTab({ branchId }: { branchId: string | null }) {
 
 export default function DeliveryPage() {
   const { branchId } = useBranch();
-  const [tab, setTab] = useState<"active" | "history" | "zones">("active");
-  const { data: orders, isLoading } = useDeliveries(branchId, tab === "history");
+  const [tab, setTab] = useState<"live" | "active" | "history" | "zones" | "tracking">("live");
+  const { data: orders, isLoading } = useDeliveries(
+    branchId,
+    tab === "history",
+  );
+  const settings = useSettings(branchId);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Delivery</h1>
-        <p className="text-sm text-muted-foreground">Assign drivers, track deliveries, and manage zones</p>
+        <p className="text-sm text-muted-foreground">
+          Live map, assign drivers, replay routes, and manage zones
+        </p>
       </div>
-      <div className="flex gap-2">
-        {(["active", "history", "zones"] as const).map((t) => (
+      <div className="flex flex-wrap gap-2">
+        {(["live", "active", "history", "zones", "tracking"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -302,7 +396,15 @@ export default function DeliveryPage() {
           </button>
         ))}
       </div>
-      {tab === "zones" ? (
+      {tab === "live" ? (
+        <LiveMapPanel branchId={branchId} />
+      ) : tab === "tracking" ? (
+        settings.data?.branch ? (
+          <DeliveryTrackingSettings branchId={branchId} branch={settings.data.branch} />
+        ) : (
+          <Skeleton className="h-40 w-full max-w-xl" />
+        )
+      ) : tab === "zones" ? (
         <ZonesTab branchId={branchId} />
       ) : isLoading ? (
         <Skeleton className="h-24" />

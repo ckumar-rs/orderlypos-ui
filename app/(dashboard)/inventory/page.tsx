@@ -3,9 +3,9 @@
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { AddIngredientDialog } from "@/components/inventory/add-ingredient-dialog";
+import { EditIngredientDialog } from "@/components/inventory/edit-ingredient-dialog";
 import { PurchaseReturnDialog } from "@/components/inventory/purchase-return-dialog";
 import { AdjustStockDialog } from "@/components/inventory/adjust-stock-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,20 +34,10 @@ export default function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Ingredients, recipe costing, purchase orders, and waste
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <PurchaseReturnDialog branchId={branchId} />
-          <AddIngredientDialog branchId={branchId} />
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <PurchaseReturnDialog branchId={branchId} />
+        <AddIngredientDialog branchId={branchId} />
       </div>
-
-      <InventoryTabs />
 
       {trackingStatus && trackingStatus.problems.length > 0 && (
         <div role="alert" className="flex gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm">
@@ -99,6 +89,7 @@ export default function InventoryPage() {
                     <TableCell className="font-medium text-foreground">
                       <div className="flex items-center gap-2">
                         {i.name}
+                        {!i.isActive && <Badge variant="outline">Inactive</Badge>}
                         {isLow && (
                           <Badge variant="destructive" className="gap-1">
                             <AlertTriangle className="h-3 w-3" />
@@ -119,7 +110,10 @@ export default function InventoryPage() {
                       {formatCurrency(Number(i.currentStock) * Number(i.costPerUnit))}
                     </TableCell>
                     <TableCell>
-                      <AdjustStockDialog branchId={branchId} ingredient={i} />
+                      <div className="flex flex-wrap items-center justify-end gap-1">
+                        <EditIngredientDialog branchId={branchId} ingredient={i} />
+                        <AdjustStockDialog branchId={branchId} ingredient={i} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

@@ -1,6 +1,11 @@
 "use client";
 
-import type { CreateIntegrationApiKeyDto, CreateStaffApiKeyDto, IntegrationScope } from "@nodedr-restaurant/types";
+import type {
+  CreateIntegrationApiKeyDto,
+  CreateStaffApiKeyDto,
+  IntegrationScope,
+  RenameApiKeyDto,
+} from "@nodedr-restaurant/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -48,6 +53,15 @@ export function useCreateStaffApiKey() {
   });
 }
 
+export function useRenameStaffApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: RenameApiKeyDto }) =>
+      api.patch<StaffApiKey>(`/staff-api-keys/${id}`, dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["staff-api-keys"] }),
+  });
+}
+
 export function useRevokeStaffApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -68,6 +82,15 @@ export function useCreateIntegrationApiKey() {
   return useMutation({
     mutationFn: (dto: CreateIntegrationApiKeyDto) =>
       api.post<IntegrationApiKeyCreated>("/integration-api-keys", dto),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integration-api-keys"] }),
+  });
+}
+
+export function useRenameIntegrationApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: RenameApiKeyDto }) =>
+      api.patch<IntegrationApiKey>(`/integration-api-keys/${id}`, dto),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["integration-api-keys"] }),
   });
 }

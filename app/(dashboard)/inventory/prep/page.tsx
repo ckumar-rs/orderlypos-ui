@@ -1,8 +1,8 @@
 "use client";
 
+import { EditPrepRecipeDialog } from "@/components/inventory/edit-prep-recipe-dialog";
 import { NewPrepRecipeDialog } from "@/components/inventory/new-prep-recipe-dialog";
 import { RecordPrepBatchDialog } from "@/components/inventory/record-prep-batch-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,20 +27,10 @@ export default function PrepPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-          <p className="text-sm text-muted-foreground">
-            Cook a prep recipe: consume raw stock, add the finished stock item
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <NewPrepRecipeDialog branchId={branchId} />
-          <RecordPrepBatchDialog branchId={branchId} />
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <NewPrepRecipeDialog branchId={branchId} />
+        <RecordPrepBatchDialog branchId={branchId} />
       </div>
-
-      <InventoryTabs />
 
       <Card className="overflow-hidden p-0">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">Prep recipes</div>
@@ -74,21 +64,25 @@ export default function PrepPage() {
                       .join(", ")}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        remove.mutate(recipe.id, {
-                          onSuccess: () => toast.success("Recipe removed"),
-                          onError: (err) =>
-                            toast.error(
-                              err instanceof ApiError ? err.message : "Cannot delete this recipe",
-                            ),
-                        })
-                      }
-                    >
-                      Delete
-                    </Button>
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <EditPrepRecipeDialog branchId={branchId} recipe={recipe} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (!window.confirm(`Delete ${recipe.name}?`)) return;
+                          remove.mutate(recipe.id, {
+                            onSuccess: () => toast.success("Recipe removed"),
+                            onError: (err) =>
+                              toast.error(
+                                err instanceof ApiError ? err.message : "Cannot delete this recipe",
+                              ),
+                          });
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

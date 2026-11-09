@@ -1,10 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { ProductFrame } from "@/components/site/product-frame";
 import { cn } from "@/lib/utils";
 
-/** Soft wash behind copy — never competes with the product frames. */
+const HeroProductScene = dynamic(
+  () => import("@/components/site/hero-product-scene").then((m) => m.HeroProductScene),
+  { ssr: false, loading: () => null },
+);
+
+/** Soft wash behind copy — never competes with the product 3D. */
 export function HeroAtmosphere({ className }: { className?: string }) {
   const reducedMotion = useReducedMotion();
   return (
@@ -43,8 +50,8 @@ export function HeroAtmosphere({ className }: { className?: string }) {
 }
 
 /**
- * Stacked product frames for auth / marketing panels.
- * Deploy UI omits the Three.js scene so the build stays light.
+ * The one required 3D marketing moment: real admin screens on floating devices.
+ * Reduced motion → stacked product frames.
  */
 export function HeroProductVisual({
   primarySrc = "/site/admin-pos.png",
@@ -57,34 +64,73 @@ export function HeroProductVisual({
   secondarySrc?: string;
   alt?: string;
   className?: string;
+  /** Smaller stacked frames — for auth brand panel, not the home hero. */
   compact?: boolean;
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
   const reducedMotion = useReducedMotion();
 
+  useEffect(() => {
+    if (reducedMotion) return;
+    const el = hostRef.current;
+    if (!el) return;
+    let cancelled = false;
+    let timeoutId = 0;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        timeoutId = window.setTimeout(() => {
+          if (!cancelled) setReady(true);
+        }, 120);
+        io.disconnect();
+      },
+      { rootMargin: "200px" },
+    );
+    io.observe(el);
+    return () => {
+      cancelled = true;
+      io.disconnect();
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [reducedMotion]);
+
   return (
-    <div className={cn("relative mx-auto w-full max-w-xl", className)}>
+    <div ref={hostRef} className={cn("relative mx-auto w-full max-w-xl", className)}>
       <div
         aria-hidden
         className="pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 blur-3xl"
       />
-      <motion.div
-        className="relative"
-        initial={reducedMotion ? false : { opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <div
-          className={cn(
-            "absolute opacity-70",
-            compact ? "-left-1 top-3 w-[68%] -rotate-5" : "-left-2 top-6 w-[72%] -rotate-6 sm:-left-6",
-          )}
+      {compact || reducedMotion || !ready ? (
+        <motion.div
+          className="relative"
+          initial={reducedMotion ? false : { opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          <ProductFrame src={secondarySrc} alt="" crop />
-        </div>
-        <div className={cn("relative ml-auto", compact ? "w-[82%]" : "w-[84%]")}>
-          <ProductFrame src={primarySrc} alt={alt} priority={!compact} crop />
-        </div>
-      </motion.div>
+          <div
+            className={cn(
+              "absolute opacity-70",
+              compact ? "-left-1 top-3 w-[68%] -rotate-5" : "-left-2 top-6 w-[72%] -rotate-6 sm:-left-6",
+            )}
+          >
+            <ProductFrame src={secondarySrc} alt="" crop />
+          </div>
+          <div className={cn("relative ml-auto", compact ? "w-[82%]" : "w-[84%]")}>
+            <ProductFrame src={primarySrc} alt={alt} priority={!compact} crop />
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          className="h-[min(48vh,22rem)] w-full sm:h-[min(56vh,28rem)] lg:h-[34rem]"
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <HeroProductScene primarySrc={primarySrc} secondarySrc={secondarySrc} />
+          <span className="sr-only">{alt}</span>
+        </motion.div>
+      )}
     </div>
   );
 }

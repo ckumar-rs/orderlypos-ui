@@ -141,6 +141,14 @@ export function TerminalForm({
     },
     onError: (e) => toast.error(errMsg(e)),
   });
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/commerce/terminals/${row!.id}?branchId=${branchId}`),
+    onSuccess: () => {
+      toast.success("Terminal deleted");
+      onSaved();
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
   const prefix = row?.id ?? "new";
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -168,9 +176,24 @@ export function TerminalForm({
       <Label htmlFor={`${prefix}-secret`}>Secret</Label>
       <Input id={`${prefix}-secret`} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={row?.secretConfigured ? "Secret stored. Type to replace it." : "Secret"} autoComplete="off" />
       <p className="font-mono text-[11px] text-muted-foreground">{originPath(`/api/v1/public/edc/${provider.toLowerCase()}`)}</p>
-      <Button type="button" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
-        {row ? "Save" : "Add terminal"}
-      </Button>
+      <div className="flex gap-2">
+        <Button type="button" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
+          {row ? "Save" : "Add terminal"}
+        </Button>
+        {row && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={remove.isPending}
+            onClick={() => {
+              if (!confirm(`Delete ${row.name}?`)) return;
+              remove.mutate();
+            }}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }
@@ -230,6 +253,14 @@ export function HouseForm({
     },
     onError: (e) => toast.error(errMsg(e)),
   });
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/commerce/house-accounts/${row!.id}?branchId=${branchId}`),
+    onSuccess: () => {
+      toast.success("House account deleted");
+      onSaved();
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
   const prefix = row?.id ?? "new-house";
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -250,9 +281,24 @@ export function HouseForm({
       <Input id={`${prefix}-limit`} value={limit} onChange={(e) => setLimit(e.target.value)} />
       <Label htmlFor={`${prefix}-notes`}>Notes</Label>
       <Input id={`${prefix}-notes`} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      <Button type="button" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
-        {row ? "Save" : "Create account"}
-      </Button>
+      <div className="flex gap-2">
+        <Button type="button" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
+          {row ? "Save" : "Create account"}
+        </Button>
+        {row && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={remove.isPending}
+            onClick={() => {
+              if (!confirm(`Delete ${row.name}?`)) return;
+              remove.mutate();
+            }}
+          >
+            Delete
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

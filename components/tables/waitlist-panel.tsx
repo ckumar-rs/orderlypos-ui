@@ -24,7 +24,9 @@ import {
   useCancelWaitlistEntry,
   useCreateWaitlistEntry,
   useSeatWaitlistEntry,
+  useUpdateWaitlistEntry,
   useWaitlist,
+  type WaitlistEntry,
 } from "@/hooks/use-waitlist";
 import type { RestaurantTable } from "@/hooks/use-tables";
 import { ApiError } from "@/lib/api";
@@ -116,6 +118,84 @@ function AddWaitlistDialog({ branchId }: { branchId: string | null }) {
   );
 }
 
+function EditWaitlistDialog({
+  branchId,
+  entry,
+  open,
+  onOpenChange,
+}: {
+  branchId: string | null;
+  entry: WaitlistEntry;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [customerName, setCustomerName] = useState(entry.customerName);
+  const [partySize, setPartySize] = useState(String(entry.partySize));
+  const updateEntry = useUpdateWaitlistEntry(branchId);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (next) {
+          setCustomerName(entry.customerName);
+          setPartySize(String(entry.partySize));
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-sm">
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateEntry.mutate(
+              {
+                id: entry.id,
+                dto: { customerName: customerName.trim(), partySize: Number(partySize) },
+              },
+              {
+                onSuccess: () => {
+                  toast.success("Waitlist updated");
+                  onOpenChange(false);
+                },
+                onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not update"),
+              },
+            );
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Edit party</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="we-name">Name</Label>
+            <Input id="we-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="we-party">Party size</Label>
+            <Input
+              id="we-party"
+              type="number"
+              min="1"
+              value={partySize}
+              onChange={(e) => setPartySize(e.target.value)}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateEntry.isPending}>
+              Save
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function WaitlistPanel({
   branchId,
   availableTables,
@@ -126,6 +206,7 @@ export function WaitlistPanel({
   const { data: entries, isLoading } = useWaitlist(branchId);
   const seat = useSeatWaitlistEntry(branchId);
   const cancel = useCancelWaitlistEntry(branchId);
+  const [editing, setEditing] = useState<WaitlistEntry | null>(null);
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -148,6 +229,9 @@ export function WaitlistPanel({
                 </span>
               </div>
               <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setEditing(entry)}>
+                  Edit
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     className="rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-accent"
@@ -183,6 +267,16 @@ export function WaitlistPanel({
         </div>
       ) : (
         <p className="py-4 text-sm text-muted-foreground">No one waiting.</p>
+      )}
+      {editing && (
+        <EditWaitlistDialog
+          branchId={branchId}
+          entry={editing}
+          open={Boolean(editing)}
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+        />
       )}
     </Card>
   );

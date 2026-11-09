@@ -1,8 +1,9 @@
 "use client";
 
-import type { SessionUser } from "@nodedr-restaurant/types";
+import type { AuthProfile, SessionUser } from "@nodedr-restaurant/types";
 import { Menu } from "lucide-react";
-import { useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { EntityDialogHost } from "@/components/layout/entity-dialog-host";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -15,8 +16,18 @@ import { BranchSwitcher } from "./branch-switcher";
 import { LanguageSwitcher } from "./language-switcher";
 import { Logo } from "./logo";
 import { MobileBottomNav } from "./mobile-bottom-nav";
+import { FLOOR_WINDOW_NAME, NAV_ITEMS, workspaceWindowName } from "./nav-items";
 import { SidebarNav } from "./sidebar-nav";
 import { UserMenu } from "./user-menu";
+
+function navMatch(pathname: string | null) {
+  if (!pathname) return null;
+  return (
+    NAV_ITEMS.find(
+      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
+    ) ?? null
+  );
+}
 
 // The restaurant's own logo + name lead the sidebar header — this is
 // white-label self-hosted software, so the operator's branding takes the
@@ -61,14 +72,29 @@ export function AppShell({
   user,
   children,
 }: {
-  user?: SessionUser;
+  user?: SessionUser | AuthProfile;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const immersivePos = pathname === "/pos" || pathname?.startsWith("/pos/");
+
+  // Name tabs so Floor ↔ Back office can focus the existing window instead of spawning extras.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const item = navMatch(pathname);
+    if (!item) return;
+    try {
+      window.name =
+        item.group === "floor" ? FLOOR_WINDOW_NAME : workspaceWindowName(item.href);
+    } catch {
+      // Some browsers lock window.name; navigation still works without it.
+    }
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar — kept on POS so staff can reach Orders / Tables / Settings */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
         <div className="flex h-16 items-center gap-2 px-5">
           <RestaurantBrand />
@@ -118,10 +144,21 @@ export function AppShell({
             <UserMenu user={user} />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8">{children}</main>
+        <main
+          className={
+            immersivePos
+              ? "min-h-0 flex-1 overflow-hidden bg-background p-3 sm:p-4 lg:p-5"
+              : "flex-1 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8"
+          }
+        >
+          {children}
+        </main>
         <EntityDialogHost />
       </div>
-      <MobileBottomNav user={user} onMore={() => setMobileOpen(true)} />
+      {/* POS has its own Pass/Floor/Menu/Sales tabs — hide the global phone nav there. */}
+      {!immersivePos && (
+        <MobileBottomNav user={user} onMore={() => setMobileOpen(true)} />
+      )}
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,7 +29,6 @@ export default function DevicesPage() {
   const [messages, setMessages] = useState<Record<string, string>>({});
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-2xl font-semibold">Devices</h1>
         <p className="text-sm text-muted-foreground">The POS registers itself. A message here shows on that register.</p>
@@ -63,6 +61,22 @@ export default function DevicesPage() {
                 placeholder="Message for this register"
               />
               <Button type="submit">Save</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!confirm(`Delete ${device.name}?`)) return;
+                  api
+                    .delete(`/platform/devices/${device.id}?branchId=${branchId}`)
+                    .then(() => {
+                      toast.success("Device deleted");
+                      void queryClient.invalidateQueries({ queryKey: ["devices", branchId] });
+                    })
+                    .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not delete"));
+                }}
+              >
+                Delete
+              </Button>
             </form>
           </Card>
         ))}

@@ -3,7 +3,6 @@
 import { Clock, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { ScanOrderInput } from "@/components/orders/scan-order-input";
-import { OrderSectionNav } from "@/components/orders/order-section-nav";
 import { DeleteOrdersDialog } from "@/components/orders/delete-orders-dialog";
 import { ChannelBadge, FoodPlatformBadge, TypeBadge } from "@/components/orders/channel-badges";
 import { Badge } from "@/components/ui/badge";
@@ -88,14 +87,6 @@ export default function OrdersPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Orders</h1>
-        <p className="text-sm text-muted-foreground">
-          Accept new online orders and manage everything in progress
-        </p>
-      </div>
-      <OrderSectionNav />
-
       <ScanOrderInput branchId={branchId} />
 
       <div className="flex flex-wrap gap-2">

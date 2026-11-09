@@ -2,10 +2,29 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import {
+  Building2,
+  Check,
+  ChefHat,
+  MonitorSmartphone,
+  Store,
+  type LucideIcon,
+} from "lucide-react";
+import { MotionPress, SiteRevealGroup, SiteRevealItem } from "@/components/site/site-motion";
+import { cn } from "@/lib/utils";
 
 type Currency = "INR" | "USD";
 
-const plans = [
+const plans: {
+  name: string;
+  who: string;
+  lead: string;
+  monthly: { INR: number; USD: number };
+  points: string[];
+  href: string;
+  featured: boolean;
+  icon: LucideIcon;
+}[] = [
   {
     name: "Starter",
     who: "Cafes, food trucks, and a first trial",
@@ -14,6 +33,7 @@ const plans = [
     points: ["Basic billing", "A short menu", "1 terminal"],
     href: "/signup",
     featured: false,
+    icon: Store,
   },
   {
     name: "Growth",
@@ -23,6 +43,7 @@ const plans = [
     points: ["Full billing", "Basic reports", "1–2 devices", "Kitchen display basics"],
     href: "/signup",
     featured: false,
+    icon: ChefHat,
   },
   {
     name: "Pro",
@@ -32,6 +53,7 @@ const plans = [
     points: ["Several devices", "Kiosk ordering", "Inventory and loyalty", "Priority support"],
     href: "/signup",
     featured: true,
+    icon: MonitorSmartphone,
   },
   {
     name: "Enterprise",
@@ -41,6 +63,7 @@ const plans = [
     points: ["Central dashboard", "Integrations", "A named contact"],
     href: "mailto:info@contrivya.com?subject=OrderlyPOS%20Enterprise",
     featured: false,
+    icon: Building2,
   },
 ];
 
@@ -141,19 +164,21 @@ function Cell({ value }: { value: string }) {
 
 function TryNow({ href, filled }: { href: string; filled?: boolean }) {
   const className = filled
-    ? "inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
-    : "inline-flex h-10 items-center justify-center rounded-md border border-border px-4 text-sm font-medium";
-  if (href.startsWith("/")) {
-    return (
-      <Link href={href} className={className}>
-        Try now OrderlyPOS
-      </Link>
-    );
-  }
+    ? "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_12px_28px_-14px_rgba(242,101,27,0.85)]"
+    : "inline-flex h-10 w-full items-center justify-center rounded-md border border-border px-4 text-sm font-medium";
+  const label = href.startsWith("/") ? "Try now OrderlyPOS" : "Ask for a quote";
   return (
-    <a href={href} className={className}>
-      Ask for a quote
-    </a>
+    <MotionPress className="w-full">
+      {href.startsWith("/") ? (
+        <Link href={href} className={className}>
+          {label}
+        </Link>
+      ) : (
+        <a href={href} className={className}>
+          {label}
+        </a>
+      )}
+    </MotionPress>
   );
 }
 
@@ -163,7 +188,7 @@ export function PricePlans() {
   const rows = comparisonRows(currency);
 
   return (
-    <div>
+    <div id="plans">
       <div className="flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-md border border-border p-1" role="group" aria-label="Billing period">
           <button
@@ -204,42 +229,55 @@ export function PricePlans() {
         <p className="text-sm text-muted-foreground">Yearly billing is 20% less. INR and USD are both list prices.</p>
       </div>
 
-      <div className="mt-10 grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
+      <SiteRevealGroup className="mt-10 grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
         {plans.map((plan) => {
           const amount = perMonth(plan.monthly[currency], yearly);
+          const Icon = plan.icon;
           return (
-            <article key={plan.name} className="flex flex-col bg-background p-6">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-medium">{plan.name}</h2>
-                {plan.featured ? (
-                  <span className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">Most popular</span>
-                ) : null}
-              </div>
-              <p className="mt-4 text-3xl font-medium tracking-tight tabular-nums">
-                {money(amount, currency)}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {yearly
-                  ? `${money(perYear(plan.monthly[currency]), currency)} billed once a year`
-                  : "a month"}
-              </p>
-              <div className="mt-5">
-                <TryNow href={plan.href} filled={plan.featured} />
-              </div>
-              <p className="mt-6 text-sm text-muted-foreground">{plan.lead}</p>
-              <p className="mt-3 text-sm leading-relaxed">{plan.who}</p>
-              <ul className="mt-4 flex flex-col gap-2">
-                {plan.points.map((point) => (
-                  <li key={point} className="flex gap-2 text-sm">
-                    <span aria-hidden className="text-primary">✓</span>
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </article>
+            <SiteRevealItem key={plan.name}>
+              <article
+                className={cn(
+                  "flex h-full flex-col bg-background p-6",
+                  plan.featured && "ring-1 ring-primary/30 ring-inset",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className="size-4 text-primary" aria-hidden />
+                    <h2 className="text-sm font-medium">{plan.name}</h2>
+                  </div>
+                  {plan.featured ? (
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      Most popular
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-4 text-3xl font-medium tracking-tight tabular-nums">
+                  {money(amount, currency)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {yearly
+                    ? `${money(perYear(plan.monthly[currency]), currency)} billed once a year`
+                    : "a month"}
+                </p>
+                <div className="mt-5">
+                  <TryNow href={plan.href} filled={plan.featured} />
+                </div>
+                <p className="mt-6 text-sm text-muted-foreground">{plan.lead}</p>
+                <p className="mt-3 text-sm leading-relaxed">{plan.who}</p>
+                <ul className="mt-4 flex flex-col gap-2">
+                  {plan.points.map((point) => (
+                    <li key={point} className="flex gap-2 text-sm">
+                      <Check className="mt-0.5 size-3.5 shrink-0 text-primary" aria-hidden />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            </SiteRevealItem>
           );
         })}
-      </div>
+      </SiteRevealGroup>
 
       <p className="mt-4 max-w-3xl text-sm leading-relaxed text-muted-foreground">
         Prices are per outlet. Switch INR or USD for the list in that currency. Creating an account does not charge a card or turn these limits on.
@@ -298,12 +336,6 @@ export function PricePlans() {
         ))}
       </div>
 
-      <div className="mt-20 flex flex-col gap-6 border-t border-border pt-16 sm:flex-row sm:items-end sm:justify-between">
-        <h2 className="max-w-xl text-3xl font-medium tracking-tight text-balance sm:text-4xl">
-          Try now OrderlyPOS.
-        </h2>
-        <TryNow href="/signup" filled />
-      </div>
     </div>
   );
 }

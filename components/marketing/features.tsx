@@ -28,7 +28,7 @@ const features = [
     icon: QrCode,
     title: "Tables & reservations",
     description:
-      "Visual floor plan, booking with waitlist, table transfer, and per-table QR codes for a read-only public menu.",
+      "Visual floor plan, booking with waitlist, table transfer, and per-table QR codes for ordering, tip, split, and pay.",
   },
   {
     icon: Package,

@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
 import { ApiError, api } from "@/lib/api";
-import { TableSectionNav } from "@/components/tables/table-section-nav";
 
 const OPTIONS = ["INDOOR", "OUTDOOR", "COVERED"] as const;
 
@@ -21,11 +20,7 @@ export default function FloorAreasPage() {
   });
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <TableSectionNav />
-      <div>
-        <h1 className="text-2xl font-semibold">Indoor and outdoor areas</h1>
-        <p className="text-sm text-muted-foreground">Each floor is one seating type. Tables stay on that floor.</p>
-      </div>
+      <p className="text-sm text-muted-foreground">Each floor is one seating type. Tables stay on that floor.</p>
       <div className="flex flex-col gap-3">
         {(floors.data ?? []).map((floor) => (
           <FloorRow

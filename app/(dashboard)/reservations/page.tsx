@@ -2,7 +2,6 @@
 
 import type { ReservationStatusDto } from "@nodedr-restaurant/types";
 import { Check, X, Users } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
 import { AddReservationDialog } from "@/components/reservations/add-reservation-dialog";
 import { ChannelBadge } from "@/components/orders/channel-badges";
@@ -51,18 +50,7 @@ export default function ReservationsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-foreground">
-            Reservations
-          </h1>
-          <p className="text-sm text-muted-foreground">Upcoming bookings across all floors</p>
-          <Link href="/reservations/follow-up" className="text-sm underline">Today's texts and no-shows</Link>
-          <span className="mx-2 text-muted-foreground">·</span>
-          <Link href="/reservations/forecast" className="text-sm underline">Forecast</Link>
-          <span className="mx-2 text-muted-foreground">·</span>
-          <Link href="/reservations/deposits" className="text-sm underline">Deposits</Link>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <AddReservationDialog branchId={branchId} tables={tables} />
       </div>
 

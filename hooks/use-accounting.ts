@@ -9,15 +9,21 @@ export interface ExpenseRow {
   category: string;
   amount: string;
   note: string | null;
+  vendor?: string | null;
   paidFromCash: boolean;
   status: "PENDING" | "APPROVED" | "REJECTED";
+  attachments?: { id: string; fileName: string; mimeType: string; size: number }[];
 }
 export interface ClosingPreview {
   businessDate: string;
   openingFloat: number;
+  suggestedOpeningFloat: number;
   cashSales: number;
   cashExpenses: number;
   expectedCash: number;
+  varianceWarnAmount: number;
+  pettyCashInTillClose?: boolean;
+  pettyNetOut?: number;
 }
 export interface ClosingRow {
   id: string;
@@ -26,6 +32,8 @@ export interface ClosingRow {
   countedCash: string;
   variance: string;
   note: string | null;
+  bankDrop?: string;
+  safeDrop?: string;
 }
 export interface ProfitLoss {
   orders: number;
@@ -33,6 +41,8 @@ export interface ProfitLoss {
   taxCollected: number;
   refunds: number;
   netSales: number;
+  cogs: number;
+  grossProfit: number;
   expenses: { category: string; amount: number }[];
   totalExpenses: number;
   payrollCost: number;
@@ -73,11 +83,21 @@ export function useExpenses(branchId: string | null, from: string, to: string) {
     enabled: !!branchId,
   });
 }
-export function useClosingPreview(branchId: string | null, date: string, openingFloat: number) {
+export function useClosingPreview(
+  branchId: string | null,
+  date: string,
+  openingFloat?: number | null,
+) {
+  const floatQs =
+    openingFloat == null || Number.isNaN(openingFloat)
+      ? ""
+      : `&openingFloat=${openingFloat}`;
   return useQuery({
-    queryKey: ["acct", "preview", branchId, date, openingFloat],
+    queryKey: ["acct", "preview", branchId, date, openingFloat ?? "auto"],
     queryFn: () =>
-      api.get<ClosingPreview>(`/accounting/closing/preview?${q(branchId)}&date=${date}&openingFloat=${openingFloat}`),
+      api.get<ClosingPreview>(
+        `/accounting/closing/preview?${q(branchId)}&date=${date}${floatQs}`,
+      ),
     enabled: !!branchId,
   });
 }
@@ -147,6 +167,57 @@ export function useBranchOverview(from: string, to: string) {
   });
 }
 
+export interface ConsolidatedPnl {
+  from: string;
+  to: string;
+  branches: (ProfitLoss & { branchId: string; name: string })[];
+  totals: ProfitLoss;
+}
+
+export function useConsolidatedPnl(from: string, to: string) {
+  return useQuery({
+    queryKey: ["acct", "pnl-consolidated", from, to],
+    queryFn: () => api.get<ConsolidatedPnl>(`/accounting/profit-loss/consolidated?from=${from}&to=${to}`),
+  });
+}
+
+export interface PeriodLockRow {
+  id: string;
+  fromDate: string;
+  toDate: string;
+  reason: string | null;
+  lockedAt: string;
+}
+
+export function usePeriodLocks(branchId: string | null) {
+  return useQuery({
+    queryKey: ["acct", "period-locks", branchId],
+    queryFn: () => api.get<PeriodLockRow[]>(`/accounting/period-locks?${q(branchId)}`),
+    enabled: !!branchId,
+  });
+}
+
+export interface TillHistoryRow {
+  id: string;
+  openingFloat: string;
+  expectedCash: string | null;
+  countedCash: string | null;
+  note: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  openedBy: { name: string };
+  closedBy: { name: string } | null;
+}
+
+export function useTillHistory(branchId: string | null, from: string, to: string) {
+  return useQuery({
+    queryKey: ["acct", "till-history", branchId, from, to],
+    queryFn: () =>
+      api.get<TillHistoryRow[]>(`/accounting/till-history?${q(branchId)}&from=${from}&to=${to}`),
+    enabled: !!branchId,
+  });
+}
+
 export interface LedgerAccountRow {
   id: string;
   code: string;
@@ -174,7 +245,7 @@ export function useAccountMaps(branchId: string | null) {
   return useQuery({
     queryKey: ["acct", "maps", branchId],
     queryFn: () =>
-      api.get<{ id: string; sourceKey: string; account: { code: string; name: string } }[]>(
+      api.get<{ id: string; sourceKey: string; account: { id: string; code: string; name: string } }[]>(
         `/accounting/account-maps?${q(branchId)}`,
       ),
     enabled: !!branchId,
@@ -240,8 +311,28 @@ export function useAccountingActions(branchId: string | null) {
   const done = () => qc.invalidateQueries({ queryKey: ["acct"] });
   return {
     addExpense: useMutation({
-      mutationFn: (dto: { spentOn: string; category: string; amount: number; note?: string; paidFromCash: boolean }) =>
-        api.post(`/accounting/expenses?${q(branchId)}`, dto),
+      mutationFn: (dto: {
+        spentOn: string;
+        category: string;
+        amount: number;
+        note?: string;
+        vendor?: string;
+        paidFromCash: boolean;
+      }) => api.post(`/accounting/expenses?${q(branchId)}`, dto),
+      onSuccess: done,
+    }),
+    updateExpense: useMutation({
+      mutationFn: (v: {
+        id: string;
+        dto: {
+          spentOn: string;
+          category: string;
+          amount: number;
+          note?: string;
+          vendor?: string;
+          paidFromCash: boolean;
+        };
+      }) => api.patch(`/accounting/expenses/${v.id}?${q(branchId)}`, v.dto),
       onSuccess: done,
     }),
     deleteExpense: useMutation({
@@ -258,14 +349,69 @@ export function useAccountingActions(branchId: string | null) {
         api.post(`/accounting/petty-cash?${q(branchId)}`, dto),
       onSuccess: done,
     }),
+    deletePettyCash: useMutation({
+      mutationFn: (id: string) => api.delete(`/accounting/petty-cash/${id}?${q(branchId)}`),
+      onSuccess: done,
+    }),
+    updatePettyCash: useMutation({
+      mutationFn: (v: {
+        id: string;
+        dto: { direction: "IN" | "OUT"; amount: number; reason: string; spentOn: string };
+      }) => api.patch(`/accounting/petty-cash/${v.id}?${q(branchId)}`, v.dto),
+      onSuccess: done,
+    }),
     closeDay: useMutation({
-      mutationFn: (dto: { businessDate: string; openingFloat: number; countedCash: number; note?: string }) =>
-        api.post(`/accounting/closing?${q(branchId)}`, dto),
+      mutationFn: (dto: {
+        businessDate: string;
+        openingFloat: number;
+        countedCash: number;
+        bankDrop?: number;
+        safeDrop?: number;
+        note?: string;
+      }) => api.post(`/accounting/closing?${q(branchId)}`, dto),
+      onSuccess: done,
+    }),
+    reopenClosing: useMutation({
+      mutationFn: (id: string) => api.post(`/accounting/closing/${id}/reopen?${q(branchId)}`, {}),
+      onSuccess: done,
+    }),
+    adjustClosing: useMutation({
+      mutationFn: (v: { id: string; countedCash?: number; note?: string }) =>
+        api.patch(`/accounting/closing/${v.id}?${q(branchId)}`, {
+          countedCash: v.countedCash,
+          note: v.note,
+        }),
+      onSuccess: done,
+    }),
+    reverseJournal: useMutation({
+      mutationFn: (id: string) => api.post(`/accounting/journals/${id}/reverse?${q(branchId)}`, {}),
       onSuccess: done,
     }),
     createAccount: useMutation({
       mutationFn: (dto: { code: string; name: string; type: string }) =>
         api.post(`/accounting/accounts?${q(branchId)}`, dto),
+      onSuccess: done,
+    }),
+    seedDefaults: useMutation({
+      mutationFn: () => api.post(`/accounting/accounts/seed-defaults?${q(branchId)}`, {}),
+      onSuccess: done,
+    }),
+    createPeriodLock: useMutation({
+      mutationFn: (dto: { fromDate: string; toDate: string; reason?: string }) =>
+        api.post(`/accounting/period-locks?${q(branchId)}`, dto),
+      onSuccess: done,
+    }),
+    deletePeriodLock: useMutation({
+      mutationFn: (id: string) => api.delete(`/accounting/period-locks/${id}?${q(branchId)}`),
+      onSuccess: done,
+    }),
+    updateAccount: useMutation({
+      mutationFn: (v: { id: string; dto: { code?: string; name?: string; type?: string } }) =>
+        api.patch(`/accounting/accounts/${v.id}?${q(branchId)}`, v.dto),
+      onSuccess: done,
+    }),
+    deleteAccount: useMutation({
+      mutationFn: (id: string) => api.delete(`/accounting/accounts/${id}?${q(branchId)}`),
       onSuccess: done,
     }),
     upsertMap: useMutation({

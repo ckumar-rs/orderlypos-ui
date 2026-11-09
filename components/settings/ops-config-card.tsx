@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateRestaurantSettings, type RestaurantSettings } from "@/hooks/use-settings";
+import {
+  useSendTestEmail,
+  useUpdateRestaurantSettings,
+  type RestaurantSettings,
+} from "@/hooks/use-settings";
 import { ApiError } from "@/lib/api";
 
 export function OpsConfigCard({
@@ -19,12 +23,10 @@ export function OpsConfigCard({
   branchId: string | null;
 }) {
   const update = useUpdateRestaurantSettings(branchId);
-  const [smtpHost, setSmtpHost] = useState(restaurant.smtpHost ?? "");
-  const [smtpPort, setSmtpPort] = useState(String(restaurant.smtpPort ?? 587));
-  const [smtpUser, setSmtpUser] = useState(restaurant.smtpUser ?? "");
+  const testEmail = useSendTestEmail();
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpFrom, setSmtpFrom] = useState(restaurant.smtpFrom ?? "");
-  const [smtpSecure, setSmtpSecure] = useState(Boolean(restaurant.smtpSecure));
+  const [testTo, setTestTo] = useState(restaurant.smtpFrom ?? "");
   const [tallyEnabled, setTallyEnabled] = useState(Boolean(restaurant.tallyEnabled));
   const [tallyCompanyName, setTallyCompanyName] = useState(restaurant.tallyCompanyName ?? "");
   const [tallyHost, setTallyHost] = useState(restaurant.tallyHost ?? "");
@@ -39,10 +41,17 @@ export function OpsConfigCard({
       ? restaurant.tallyLedgers.map((row) => ({ sourceKey: row.sourceKey, ledgerName: row.ledgerName }))
       : [{ sourceKey: "", ledgerName: "" }],
   );
-  const [payCash, setPayCash] = useState(Boolean(restaurant.payCash));
+  const [payCash, setPayCash] = useState(restaurant.payCash !== false);
   const [payCard, setPayCard] = useState(Boolean(restaurant.payCard));
   const [payUpi, setPayUpi] = useState(restaurant.payUpi !== false);
   const [payOther, setPayOther] = useState(Boolean(restaurant.payOther));
+  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<
+    "UPI" | "CASH" | "CARD" | "OTHER"
+  >((restaurant.preferredPaymentMethod as "UPI" | "CASH" | "CARD" | "OTHER") || "UPI");
+  const [cashLabel, setCashLabel] = useState(restaurant.cashLabel ?? "");
+  const [paymentMethodOrder, setPaymentMethodOrder] = useState(
+    (restaurant.paymentMethodOrder ?? []).join(","),
+  );
   const [receiptWhatsApp, setReceiptWhatsApp] = useState(restaurant.receiptWhatsApp !== false);
   const [receiptEmailEnabled, setReceiptEmailEnabled] = useState(restaurant.receiptEmailEnabled !== false);
   const [receiptPrint, setReceiptPrint] = useState(restaurant.receiptPrint !== false);
@@ -56,6 +65,10 @@ export function OpsConfigCard({
   const [waCloudAccessToken, setWaCloudAccessToken] = useState("");
   const [waCloudTemplateName, setWaCloudTemplateName] = useState(restaurant.waCloudTemplateName ?? "");
   const [waCloudTemplateLang, setWaCloudTemplateLang] = useState(restaurant.waCloudTemplateLang ?? "");
+  const [bulkWaEnabled, setBulkWaEnabled] = useState(Boolean(restaurant.bulkWaEnabled));
+  const [bulkWaBaseUrl, setBulkWaBaseUrl] = useState(restaurant.bulkWaBaseUrl ?? "");
+  const [bulkWaApiKey, setBulkWaApiKey] = useState("");
+  const [bulkWaWebhookSecret, setBulkWaWebhookSecret] = useState("");
   const [smsEnabled, setSmsEnabled] = useState(Boolean(restaurant.smsEnabled));
   const [smsProvider, setSmsProvider] = useState(restaurant.smsProvider ?? "");
   const [smsBaseUrl, setSmsBaseUrl] = useState(restaurant.smsBaseUrl ?? "");
@@ -82,11 +95,18 @@ export function OpsConfigCard({
     e.preventDefault();
     update.mutate(
       {
-        smtpHost: smtpHost.trim() || null,
-        smtpPort: smtpPort ? Number(smtpPort) : null,
-        smtpUser: smtpUser.trim() || null,
+        // All outbound mail goes through Resend (HTTP API). These SMTP columns
+        // store the API key + from address for the restaurant.
+        smtpHost:
+          smtpFrom.trim() || smtpPassword || restaurant.smtpConfigured
+            ? "smtp.resend.com"
+            : null,
+        smtpPort:
+          smtpFrom.trim() || smtpPassword || restaurant.smtpConfigured ? 587 : null,
+        smtpUser:
+          smtpFrom.trim() || smtpPassword || restaurant.smtpConfigured ? "resend" : null,
         smtpFrom: smtpFrom.trim() || null,
-        smtpSecure,
+        smtpSecure: false,
         ...(smtpPassword ? { smtpPassword } : {}),
         tallyEnabled,
         tallyCompanyName: tallyCompanyName.trim() || null,
@@ -102,6 +122,14 @@ export function OpsConfigCard({
         payCard,
         payUpi,
         payOther,
+        preferredPaymentMethod,
+        cashLabel: cashLabel.trim() || undefined,
+        paymentMethodOrder: paymentMethodOrder
+          .split(",")
+          .map((part) => part.trim().toUpperCase())
+          .filter((part): part is "UPI" | "CASH" | "CARD" | "OTHER" =>
+            part === "UPI" || part === "CASH" || part === "CARD" || part === "OTHER",
+          ),
         receiptWhatsApp,
         receiptEmailEnabled,
         receiptPrint,
@@ -113,6 +141,10 @@ export function OpsConfigCard({
         waCloudTemplateName: waCloudTemplateName.trim() || null,
         waCloudTemplateLang: waCloudTemplateLang.trim() || null,
         ...(waCloudAccessToken ? { waCloudAccessToken } : {}),
+        bulkWaEnabled,
+        bulkWaBaseUrl: bulkWaBaseUrl.trim() || null,
+        ...(bulkWaApiKey ? { bulkWaApiKey } : {}),
+        ...(bulkWaWebhookSecret ? { bulkWaWebhookSecret } : {}),
         smsEnabled,
         smsProvider:
           smsProvider === "MSG91" || smsProvider === "TWILIO" || smsProvider === "CUSTOM"
@@ -162,8 +194,12 @@ export function OpsConfigCard({
             <Switch checked={payUpi} onCheckedChange={setPayUpi} aria-label="Enable UPI" />
           </label>
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-            <span className="text-sm">Cash</span>
-            <Switch checked={payCash} onCheckedChange={setPayCash} aria-label="Enable cash" />
+            <span className="text-sm">{cashLabel.trim() || "Cash"}</span>
+            <Switch
+              checked={payCash}
+              onCheckedChange={setPayCash}
+              aria-label={`Enable ${cashLabel.trim() || "cash"}`}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
             <span className="text-sm">Card</span>
@@ -173,6 +209,44 @@ export function OpsConfigCard({
             <span className="text-sm">Other</span>
             <Switch checked={payOther} onCheckedChange={setPayOther} aria-label="Enable other payments" />
           </label>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="preferred-pay">Preferred method</Label>
+            <select
+              id="preferred-pay"
+              className="h-10 rounded-md border border-input bg-background px-2"
+              value={preferredPaymentMethod}
+              onChange={(e) =>
+                setPreferredPaymentMethod(e.target.value as "UPI" | "CASH" | "CARD" | "OTHER")
+              }
+            >
+              <option value="UPI">UPI</option>
+              <option value="CASH">{cashLabel.trim() || "Cash"}</option>
+              <option value="CARD">Card</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="cash-label">Cash label (from settings)</Label>
+            <Input
+              id="cash-label"
+              value={cashLabel}
+              onChange={(e) => setCashLabel(e.target.value)}
+              placeholder="Shown on till and guest screens"
+              maxLength={20}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="pay-order">Method order</Label>
+            <Input
+              id="pay-order"
+              value={paymentMethodOrder}
+              onChange={(e) => setPaymentMethodOrder(e.target.value)}
+              placeholder="Comma-separated: UPI, CASH, CARD, OTHER"
+            />
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
@@ -190,38 +264,73 @@ export function OpsConfigCard({
           </label>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="smtp-host">SMTP host</Label>
-            <Input id="smtp-host" value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} autoComplete="off" />
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-foreground">Resend email</p>
+            <p className="text-xs text-muted-foreground">
+              All mail (password resets, receipts, report schedules) is sent through Resend.
+              Create an API key at resend.com, verify your domain (or use onboarding@resend.dev
+              for sandbox tests), then save and send a test.
+            </p>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="smtp-port">SMTP port</Label>
-            <Input id="smtp-port" type="number" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="resend-key">Resend API key</Label>
+              <Input
+                id="resend-key"
+                type="password"
+                value={smtpPassword}
+                onChange={(e) => setSmtpPassword(e.target.value)}
+                placeholder={restaurant.smtpConfigured ? "Saved. Type to replace." : "re_…"}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="smtp-from">From address</Label>
+              <Input
+                id="smtp-from"
+                type="email"
+                value={smtpFrom}
+                onChange={(e) => setSmtpFrom(e.target.value)}
+                placeholder="orders@yourdomain.com"
+              />
+            </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="smtp-user">SMTP user</Label>
-            <Input id="smtp-user" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} autoComplete="off" />
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="smtp-test-to">Send test to</Label>
+              <Input
+                id="smtp-test-to"
+                type="email"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={testEmail.isPending || !testTo.trim()}
+              onClick={() =>
+                testEmail.mutate(testTo.trim(), {
+                  onSuccess: (res) =>
+                    toast.success(`Test sent via Resend from ${res.from}`),
+                  onError: (err) =>
+                    toast.error(err instanceof ApiError ? err.message : "Test email failed"),
+                })
+              }
+            >
+              {testEmail.isPending ? "Sending…" : "Send test email"}
+            </Button>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="smtp-pass">SMTP password</Label>
-            <Input
-              id="smtp-pass"
-              type="password"
-              value={smtpPassword}
-              onChange={(e) => setSmtpPassword(e.target.value)}
-              placeholder={restaurant.smtpConfigured ? "Saved. Type to replace." : "App password"}
-              autoComplete="new-password"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="smtp-from">From address</Label>
-            <Input id="smtp-from" type="email" value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)} />
-          </div>
-          <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-            <span className="text-sm">SMTP TLS (port 465)</span>
-            <Switch checked={smtpSecure} onCheckedChange={setSmtpSecure} aria-label="SMTP secure" />
-          </label>
+          {restaurant.smtpConfigured ? (
+            <p className="text-xs text-muted-foreground">Resend is configured for this restaurant.</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Not configured yet. Until you save a Resend key here (or set RESEND_API_KEY on the
+              server), password-reset links only appear in server logs.
+            </p>
+          )}
         </div>
 
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
@@ -393,7 +502,62 @@ export function OpsConfigCard({
         </div>
         <p className="text-xs text-muted-foreground">
           Sends POST to the stored URL plus the phone-number id and /messages, with a Bearer token.
-          Leave the template name empty to send a session text message.
+          Leave the template name empty to send a session text message. Used for receipts and
+          one-to-one alerts.
+        </p>
+
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+          <span className="text-sm">Bulk WhatsApp platform</span>
+          <Switch
+            checked={bulkWaEnabled}
+            onCheckedChange={setBulkWaEnabled}
+            aria-label="Bulk WhatsApp platform"
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bulk-wa-base">Platform API URL</Label>
+            <Input
+              id="bulk-wa-base"
+              value={bulkWaBaseUrl}
+              onChange={(e) => setBulkWaBaseUrl(e.target.value)}
+              placeholder="https://bulk-wa.example.com"
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bulk-wa-key">API key</Label>
+            <Input
+              id="bulk-wa-key"
+              type="password"
+              value={bulkWaApiKey}
+              onChange={(e) => setBulkWaApiKey(e.target.value)}
+              placeholder={
+                restaurant.bulkWaApiKeyConfigured ? "Saved. Type to replace." : "Bearer API key"
+              }
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <Label htmlFor="bulk-wa-secret">Status webhook secret</Label>
+            <Input
+              id="bulk-wa-secret"
+              type="password"
+              value={bulkWaWebhookSecret}
+              onChange={(e) => setBulkWaWebhookSecret(e.target.value)}
+              placeholder={
+                restaurant.bulkWaWebhookSecretConfigured
+                  ? "Saved. Type to replace."
+                  : "Shared secret for delivery callbacks"
+              }
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Marketing campaigns POST to this platform at /v1/messages. Status callbacks hit{" "}
+          /api/v1/public/bulk-whatsapp/status with header x-webhook-secret. Raises the campaign
+          audience cap to 5,000 when linked.
         </p>
 
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { TableSectionNav } from "@/components/tables/table-section-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
@@ -32,13 +31,9 @@ export default function SplitTablePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <TableSectionNav />
-      <div>
-        <h1 className="text-2xl font-semibold">Split a table</h1>
-        <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
           Move selected dishes onto a new bill at a free table. The original table keeps at least one dish.
         </p>
-      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="flex flex-col gap-3 p-4">
           <label className="text-sm" htmlFor="source-bill">Open table</label>

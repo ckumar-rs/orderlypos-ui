@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { MenuSubpageShell } from "@/components/menu/menu-subpage-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ interface PriceRule {
   demandQty: number | null;
   demandHours: number | null;
   ingredientId?: string | null;
+  menuItemId?: string | null;
 }
 
 export default function DynamicPricesPage() {
@@ -32,6 +33,7 @@ export default function DynamicPricesPage() {
     enabled: Boolean(branchId),
     queryFn: () => api.get<PriceRule[]>(`/menu/price-rules?branchId=${branchId}`),
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [percent, setPercent] = useState("10");
   const [menuItemId, setMenuItemId] = useState("");
@@ -41,16 +43,57 @@ export default function DynamicPricesPage() {
   const [demandHours, setDemandHours] = useState("2");
   const dynamic = (rules.data ?? []).filter((rule) => rule.stockBelow != null || rule.demandQty != null);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setName("");
+    setPercent("10");
+    setMenuItemId("");
+    setIngredientId("");
+    setStockBelow("");
+    setDemandQty("");
+    setDemandHours("2");
+  };
+
+  const loadRule = (rule: PriceRule) => {
+    setEditingId(rule.id);
+    setName(rule.name);
+    setPercent(String(rule.percent));
+    setMenuItemId(rule.menuItemId ?? "");
+    setIngredientId(rule.ingredientId ?? "");
+    setStockBelow(rule.stockBelow != null ? String(rule.stockBelow) : "");
+    setDemandQty(rule.demandQty != null ? String(rule.demandQty) : "");
+    setDemandHours(rule.demandHours != null ? String(rule.demandHours) : "2");
+  };
+
+  const save = () => {
+    const body = {
+      name: name.trim(),
+      percent: Number(percent),
+      daysOfWeek: [],
+      menuItemId: menuItemId || null,
+      ingredientId: ingredientId || null,
+      stockBelow: stockBelow ? Number(stockBelow) : null,
+      demandQty: demandQty ? Number(demandQty) : null,
+      demandHours: demandQty ? Number(demandHours) || 2 : null,
+    };
+    const request = editingId
+      ? api.put(`/menu/price-rules/${editingId}?branchId=${branchId}`, body)
+      : api.post(`/menu/price-rules?branchId=${branchId}`, body);
+    return request
+      .then(() => {
+        toast.success(editingId ? "Price rule updated" : "Price rule saved");
+        resetForm();
+        void qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] });
+      })
+      .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not save"));
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <Link href="/menu" className="text-sm text-muted-foreground">Back to the menu</Link>
-      <div>
-        <h1 className="text-2xl font-semibold">Stock and demand prices</h1>
-        <p className="text-sm text-muted-foreground">
-          Raise or lower a dish when an ingredient is below the level you set, or when paid sales of that dish pass a count in the last few hours. The price stays between 10% and 300% of the menu price.
-        </p>
-      </div>
-      <Card className="grid gap-3 p-4 md:grid-cols-2">
+    <MenuSubpageShell
+      title="Stock & demand"
+      description="Raise or lower a dish when stock is low or paid sales pass a count. Price stays between 10% and 300% of the menu price."
+    >
+      <Card className="grid gap-3 p-4 sm:p-5 md:grid-cols-2">
         <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input inputMode="decimal" aria-label="Percent" placeholder="Percent" value={percent} onChange={(e) => setPercent(e.target.value)} />
         <select aria-label="Dish" className="h-10 rounded-md border border-input bg-background px-2 text-sm" value={menuItemId} onChange={(e) => setMenuItemId(e.target.value)}>
@@ -66,30 +109,20 @@ export default function DynamicPricesPage() {
           <Input inputMode="numeric" placeholder="Sales count" value={demandQty} onChange={(e) => setDemandQty(e.target.value)} />
           <Input inputMode="numeric" placeholder="Hours" value={demandHours} onChange={(e) => setDemandHours(e.target.value)} />
         </div>
-        <Button
-          type="button"
-          disabled={!name.trim() || (!stockBelow && !demandQty)}
-          onClick={() =>
-            api.post(`/menu/price-rules?branchId=${branchId}`, {
-              name: name.trim(),
-              percent: Number(percent),
-              daysOfWeek: [],
-              menuItemId: menuItemId || null,
-              ingredientId: ingredientId || null,
-              stockBelow: stockBelow ? Number(stockBelow) : null,
-              demandQty: demandQty ? Number(demandQty) : null,
-              demandHours: demandQty ? Number(demandHours) || 2 : null,
-            })
-              .then(() => {
-                toast.success("Price rule saved");
-                setName("");
-                void qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] });
-              })
-              .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not save"))
-          }
-        >
-          Save rule
-        </Button>
+        <div className="flex gap-2">
+          {editingId && (
+            <Button type="button" variant="outline" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="button"
+            disabled={!name.trim() || (!stockBelow && !demandQty)}
+            onClick={save}
+          >
+            {editingId ? "Save" : "Create rule"}
+          </Button>
+        </div>
       </Card>
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
@@ -111,15 +144,20 @@ export default function DynamicPricesPage() {
                   {rule.demandQty != null ? ` ${rule.demandQty} sold in ${rule.demandHours ?? 1}h` : ""}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  <Button type="button" size="sm" variant="outline" onClick={() => api.delete(`/menu/price-rules/${rule.id}?branchId=${branchId}`).then(() => qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] }))}>
-                    Delete
-                  </Button>
+                  <div className="flex justify-end gap-1">
+                    <Button type="button" size="sm" variant="outline" onClick={() => loadRule(rule)}>
+                      Edit
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => api.delete(`/menu/price-rules/${rule.id}?branchId=${branchId}`).then(() => qc.invalidateQueries({ queryKey: ["menu-price-rules", branchId] }))}>
+                      Delete
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </MenuSubpageShell>
   );
 }

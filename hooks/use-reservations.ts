@@ -3,6 +3,7 @@
 import type {
   CreateReservationDto,
   ReservationStatusDto,
+  UpdateReservationDto,
 } from "@nodedr-restaurant/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -53,6 +54,18 @@ export function useUpdateReservationStatus(branchId: string | null) {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: ReservationStatusDto }) =>
       api.patch(`/reservations/${id}/status?branchId=${branchId}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservations", branchId] });
+      queryClient.invalidateQueries({ queryKey: ["floors", branchId] });
+    },
+  });
+}
+
+export function useUpdateReservation(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: UpdateReservationDto }) =>
+      api.patch(`/reservations/${id}?branchId=${branchId}`, dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reservations", branchId] });
       queryClient.invalidateQueries({ queryKey: ["floors", branchId] });

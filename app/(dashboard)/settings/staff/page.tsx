@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AddStaffDialog } from "@/components/settings/add-staff-dialog";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { EditStaffDialog } from "@/components/settings/edit-staff-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -46,13 +46,6 @@ export default function StaffPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-
-      <SettingsTabs />
-
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between">
           <h2 className="text-[18px] font-medium text-foreground">Staff accounts</h2>
@@ -109,28 +102,31 @@ export default function StaffPage() {
                     />
                   </TableCell>
                   <TableCell>
-                    {member.id !== currentUser?.user.id && (
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-xs text-muted-foreground"
-                          title="Reset two-factor authentication (lost device)"
-                          onClick={() => onResetTwoFactor(member)}
-                        >
-                          Reset 2FA
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          title="Delete staff account"
-                          onClick={() => onDelete(member)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-end gap-1">
+                      <EditStaffDialog member={member} />
+                      {member.id !== currentUser?.user.id && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs text-muted-foreground"
+                            title="Reset two-factor authentication (lost device)"
+                            onClick={() => onResetTwoFactor(member)}
+                          >
+                            Reset 2FA
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            title="Delete staff account"
+                            onClick={() => onDelete(member)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

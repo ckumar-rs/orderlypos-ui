@@ -1,35 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { ModuleSectionNav } from "@/components/layout/module-section-nav";
 
 const LINKS = [
-  { href: "/kds", label: "Status board" },
-  { href: "/kds/stations", label: "Stations" },
-  { href: "/kds/expo", label: "Expo" },
-  { href: "/kds/performance", label: "Station report" },
+  { href: "/kds", label: "Status board", exact: true, description: "Ticket columns" },
+  { href: "/kds/stations", label: "Stations", description: "By kitchen station" },
+  { href: "/kds/expo", label: "Expo", description: "Pass / expo board" },
+  { href: "/kds/performance", label: "Station report", description: "Prep times" },
 ];
 
 export function KdsNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="flex flex-wrap gap-2" aria-label="Kitchen display">
-      {LINKS.map((link) => {
-        const active = pathname === link.href;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              "rounded-full px-3 py-1 text-sm",
-              active ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
-            )}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return <ModuleSectionNav title="Kitchen" items={LINKS} />;
 }

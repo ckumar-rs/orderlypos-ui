@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -266,11 +265,6 @@ export default function VerifactuPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-      <SettingsTabs />
       {country && country !== "ES" ? (
         <Card className="max-w-3xl p-6 text-sm">
           VERI*FACTU applies only to branches in Spain. Set this branch&rsquo;s country to Spain (and its tax regime to Spain &ndash; IVA) under General to use it.

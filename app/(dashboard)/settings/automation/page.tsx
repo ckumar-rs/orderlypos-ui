@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -62,6 +61,7 @@ export default function AutomationPage() {
     queryFn: () => api.get<Task[]>(`/platform/automation/tasks?branchId=${branchId}`),
     enabled: !!branchId,
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [trigger, setTrigger] = useState<string>(TRIGGERS[0][0]);
   const [actions, setActions] = useState<string[]>(["NOTIFY"]);
@@ -78,9 +78,54 @@ export default function AutomationPage() {
     void queryClient.invalidateQueries({ queryKey: ["automation", branchId] });
     void queryClient.invalidateQueries({ queryKey: ["automation-tasks", branchId] });
   };
+  const reset = () => {
+    setEditingId(null);
+    setName("");
+    setTrigger(TRIGGERS[0][0]);
+    setActions(["NOTIFY"]);
+    setEmailTo("");
+    setPhoneTo("");
+    setWebhookUrl("");
+    setTaskTitle("");
+    setNextRuleId("");
+  };
+  const loadEdit = (rule: Rule) => {
+    setEditingId(rule.id);
+    setName(rule.name);
+    setTrigger(rule.trigger);
+    setActions(Array.isArray(rule.actions) && rule.actions.length > 0 ? [...rule.actions] : ["NOTIFY"]);
+    setEmailTo(rule.emailTo ?? "");
+    setPhoneTo(rule.phoneTo ?? "");
+    setWebhookUrl(rule.webhookUrl ?? "");
+    setTaskTitle(rule.taskTitle ?? "");
+    setNextRuleId(rule.nextRuleId ?? "");
+  };
+  const submit = () => {
+    const body = {
+      name,
+      trigger,
+      actions,
+      emailTo,
+      phoneTo,
+      webhookUrl,
+      taskTitle,
+      nextRuleId,
+    };
+    const req = editingId
+      ? api.put(`/platform/automation/${editingId}?branchId=${branchId}`, body)
+      : api.post(`/platform/automation?branchId=${branchId}`, body);
+    req
+      .then(() => {
+        toast.success(editingId ? "Rule updated" : "Rule created");
+        reset();
+        refresh();
+      })
+      .catch((error) =>
+        toast.error(error instanceof ApiError ? error.message : editingId ? "Could not update" : "Could not add"),
+      );
+  };
   return (
     <div className="flex flex-col gap-4">
-      <SettingsTabs />
       <div>
         <h1 className="text-2xl font-semibold">Automation</h1>
         <p className="text-sm text-muted-foreground">
@@ -115,34 +160,19 @@ export default function AutomationPage() {
         {actions.includes("CHAIN") && (
           <select className="h-10 rounded-md border border-input bg-background px-2" value={nextRuleId} onChange={(event) => setNextRuleId(event.target.value)} aria-label="Next rule">
             <option value="">Rule to run next</option>
-            {(rules.data ?? []).map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
+            {(rules.data ?? []).filter((rule) => rule.id !== editingId).map((rule) => <option key={rule.id} value={rule.id}>{rule.name}</option>)}
           </select>
         )}
-        <Button
-          type="button"
-          disabled={!name.trim()}
-          onClick={() =>
-            api
-              .post(`/platform/automation?branchId=${branchId}`, {
-                name,
-                trigger,
-                actions,
-                emailTo,
-                phoneTo,
-                webhookUrl,
-                taskTitle,
-                nextRuleId,
-              })
-              .then(() => {
-                setName("");
-                toast.success("Rule added");
-                refresh();
-              })
-              .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not add"))
-          }
-        >
-          Add rule
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" disabled={!name.trim()} onClick={submit}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button type="button" variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="grid gap-3">
         {(rules.data ?? []).map((rule) => (
@@ -159,18 +189,40 @@ export default function AutomationPage() {
               </p>
               {rule.lastError ? <p className="text-sm text-destructive">{rule.lastError}</p> : null}
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                api
-                  .put(`/platform/automation/${rule.id}?branchId=${branchId}`, { active: !rule.active })
-                  .then(() => refresh())
-                  .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not update"))
-              }
-            >
-              {rule.active ? "Pause" : "Resume"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => loadEdit(rule)}>
+                Edit
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  api
+                    .put(`/platform/automation/${rule.id}?branchId=${branchId}`, { active: !rule.active })
+                    .then(() => refresh())
+                    .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not update"))
+                }
+              >
+                {rule.active ? "Pause" : "Resume"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!confirm(`Delete ${rule.name}?`)) return;
+                  api
+                    .delete(`/platform/automation/${rule.id}?branchId=${branchId}`)
+                    .then(() => {
+                      toast.success("Rule deleted");
+                      if (editingId === rule.id) reset();
+                      refresh();
+                    })
+                    .catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not delete"));
+                }}
+              >
+                Delete
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

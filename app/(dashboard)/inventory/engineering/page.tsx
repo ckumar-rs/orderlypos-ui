@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
@@ -47,7 +46,6 @@ export default function EngineeringPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div>
         <h1 className="text-2xl font-semibold">Menu engineering</h1>
         <p className="text-sm text-muted-foreground">

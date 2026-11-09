@@ -10,6 +10,7 @@ import { useBranch } from "@/hooks/use-branch";
 import {
   useHrActions,
   useLeave,
+  useLeaveBalances,
   usePay,
   usePayrollRun,
   usePayrollRuns,
@@ -34,24 +35,54 @@ function Schedule({ branchId }: { branchId: string | null }) {
   const to = iso(addDays(new Date(from), 6));
   const { data: shifts, isLoading } = useShifts(branchId, from, to);
   const { data: staff } = usePay(branchId);
-  const { addShift, deleteShift } = useHrActions(branchId);
-  const [form, setForm] = useState({ userId: "", date: iso(new Date()), start: "09:00", end: "17:00" });
+  const { addShift, updateShift, deleteShift } = useHrActions(branchId);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    userId: "",
+    date: iso(new Date()),
+    start: "09:00",
+    end: "17:00",
+    note: "",
+  });
+
+  const reset = () => {
+    setEditingId(null);
+    setForm({ userId: "", date: iso(new Date()), start: "09:00", end: "17:00", note: "" });
+  };
 
   const submit = () => {
     if (!form.userId) return toast.error("Pick a staff member");
-    addShift.mutate(
-      {
-        userId: form.userId,
-        startsAt: new Date(`${form.date}T${form.start}`).toISOString(),
-        endsAt: new Date(`${form.date}T${form.end}`).toISOString(),
+    const dto = {
+      userId: form.userId,
+      startsAt: new Date(`${form.date}T${form.start}`).toISOString(),
+      endsAt: new Date(`${form.date}T${form.end}`).toISOString(),
+      note: form.note.trim() || undefined,
+    };
+    if (editingId) {
+      updateShift.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Shift updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
+        },
+      );
+      return;
+    }
+    addShift.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Shift added");
+        reset();
       },
-      { onSuccess: () => toast.success("Shift added"), onError: (e) => toast.error(errMsg(e)) },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="grid gap-3 p-4 sm:grid-cols-5">
+      <Card className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <select
           aria-label="Staff"
           value={form.userId}
@@ -68,7 +99,21 @@ function Schedule({ branchId }: { branchId: string | null }) {
         <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
         <Input type="time" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} />
         <Input type="time" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} />
-        <Button onClick={submit} disabled={addShift.isPending}>Add shift</Button>
+        <Input
+          placeholder="Note (optional)"
+          value={form.note}
+          onChange={(e) => setForm({ ...form, note: e.target.value })}
+        />
+        <div className="flex gap-2">
+          <Button onClick={submit} disabled={addShift.isPending || updateShift.isPending}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </Card>
       <div className="flex items-center gap-2 text-sm">
         <Button size="sm" variant="outline" onClick={() => setFrom(iso(addDays(new Date(from), -7)))}>← Prev</Button>
@@ -81,11 +126,47 @@ function Schedule({ branchId }: { branchId: string | null }) {
         ) : shifts && shifts.length > 0 ? (
           shifts.map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-              <span className="font-medium text-foreground">{s.user.name}</span>
+              <div>
+                <p className="font-medium text-foreground">{s.user.name}</p>
+                {s.note && <p className="text-xs text-muted-foreground">{s.note}</p>}
+              </div>
               <span className="text-muted-foreground">
                 {fmtDate(s.startsAt)} · {fmtTime(s.startsAt)} – {fmtTime(s.endsAt)}
               </span>
-              <Button size="sm" variant="outline" onClick={() => deleteShift.mutate(s.id)}>Remove</Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const start = new Date(s.startsAt);
+                    const end = new Date(s.endsAt);
+                    const pad = (n: number) => String(n).padStart(2, "0");
+                    setEditingId(s.id);
+                    setForm({
+                      userId: s.userId,
+                      date: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+                      start: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+                      end: `${pad(end.getHours())}:${pad(end.getMinutes())}`,
+                      note: s.note ?? "",
+                    });
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    deleteShift.mutate(s.id, {
+                      onSuccess: () => {
+                        if (editingId === s.id) reset();
+                      },
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </div>
             </div>
           ))
         ) : (
@@ -97,48 +178,201 @@ function Schedule({ branchId }: { branchId: string | null }) {
 }
 
 function Leave({ branchId }: { branchId: string | null }) {
-  const { data, isLoading } = useLeave(branchId);
-  const { decideLeave } = useHrActions(branchId);
+  const year = new Date().getUTCFullYear();
+  const [status, setStatus] = useState<string>("");
+  const { data, isLoading } = useLeave(branchId, status || undefined);
+  const { data: balances } = useLeaveBalances(branchId, year);
+  const { data: staff } = usePay(branchId);
+  const { decideLeave, cancelLeave, createLeaveForStaff, setLeaveBalance } = useHrActions(branchId);
+  const [form, setForm] = useState({
+    userId: "",
+    type: "ANNUAL",
+    startDate: iso(new Date()),
+    endDate: iso(new Date()),
+    reason: "",
+    approveNow: true,
+  });
+
   return (
-    <Card className="flex flex-col divide-y divide-border p-2">
-      {isLoading ? (
-        <Skeleton className="m-4 h-12" />
-      ) : data && data.length > 0 ? (
-        data.map((l) => (
-          <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-            <div>
-              <p className="font-medium text-foreground">
-                {l.user?.name} · {l.type.toLowerCase()}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {fmtDate(l.startDate)} – {fmtDate(l.endDate)}
-                {l.reason && ` · ${l.reason}`}
-              </p>
-            </div>
-            {l.status === "PENDING" ? (
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => decideLeave.mutate({ id: l.id, status: "APPROVED" }, { onError: (e) => toast.error(errMsg(e)) })}>
-                  Approve
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => decideLeave.mutate({ id: l.id, status: "REJECTED" }, { onError: (e) => toast.error(errMsg(e)) })}>
-                  Reject
-                </Button>
-              </div>
-            ) : (
-              <span className="text-xs text-muted-foreground">{l.status.toLowerCase()}</span>
+    <div className="flex flex-col gap-4">
+      <Card className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+        <select
+          aria-label="Staff"
+          value={form.userId}
+          onChange={(e) => setForm({ ...form, userId: e.target.value })}
+          className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+        >
+          <option value="">Staff…</option>
+          {staff?.map((s) => (
+            <option key={s.userId} value={s.userId}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Leave type"
+          value={form.type}
+          onChange={(e) => setForm({ ...form, type: e.target.value })}
+          className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+        >
+          <option value="ANNUAL">Annual</option>
+          <option value="SICK">Sick</option>
+          <option value="UNPAID">Unpaid</option>
+          <option value="OTHER">Other</option>
+        </select>
+        <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+        <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
+        <Input
+          placeholder="Reason (optional)"
+          value={form.reason}
+          onChange={(e) => setForm({ ...form, reason: e.target.value })}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={form.approveNow}
+              onChange={(e) => setForm({ ...form, approveNow: e.target.checked })}
+            />
+            Approve now
+          </label>
+          <Button
+            size="sm"
+            disabled={!form.userId || createLeaveForStaff.isPending}
+            onClick={() =>
+              createLeaveForStaff.mutate(
+                {
+                  userId: form.userId,
+                  type: form.type,
+                  startDate: form.startDate,
+                  endDate: form.endDate,
+                  reason: form.reason || undefined,
+                  approveNow: form.approveNow,
+                },
+                {
+                  onSuccess: () => toast.success(form.approveNow ? "Leave booked" : "Leave request created"),
+                  onError: (e) => toast.error(errMsg(e)),
+                },
+              )
+            }
+          >
+            Book leave
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="overflow-x-auto p-4">
+        <p className="mb-3 text-sm font-medium text-foreground">Balances · {year}</p>
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="py-1">Staff</th>
+              <th>Type</th>
+              <th>Entitled</th>
+              <th>Used</th>
+              <th>Pending</th>
+              <th>Left</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {balances?.map((b) => (
+              <tr key={`${b.userId}-${b.type}`} className="border-t border-border">
+                <td className="py-1.5">{b.name}</td>
+                <td className="capitalize">{b.type.toLowerCase()}</td>
+                <td>
+                  <Input
+                    className="h-8 w-20"
+                    defaultValue={String(b.entitledDays)}
+                    onBlur={(e) => {
+                      const next = Number(e.target.value);
+                      if (!Number.isFinite(next) || next === b.entitledDays) return;
+                      setLeaveBalance.mutate(
+                        { userId: b.userId, type: b.type, year: b.year, entitledDays: next },
+                        {
+                          onSuccess: () => toast.success("Entitlement saved"),
+                          onError: (err) => toast.error(errMsg(err)),
+                        },
+                      );
+                    }}
+                  />
+                </td>
+                <td>{b.usedDays}</td>
+                <td>{b.pendingDays}</td>
+                <td className="font-medium">{b.remainingDays}</td>
+                <td className="text-xs text-muted-foreground">{b.overridden ? "custom" : "default"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <div className="flex gap-2">
+        {["", "PENDING", "APPROVED", "REJECTED", "CANCELLED"].map((s) => (
+          <button
+            key={s || "all"}
+            type="button"
+            onClick={() => setStatus(s)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs capitalize",
+              status === s ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
             )}
-          </div>
-        ))
-      ) : (
-        <p className="p-6 text-center text-sm text-muted-foreground">No leave requests.</p>
-      )}
-    </Card>
+          >
+            {s ? s.toLowerCase() : "all"}
+          </button>
+        ))}
+      </div>
+
+      <Card className="flex flex-col divide-y divide-border p-2">
+        {isLoading ? (
+          <Skeleton className="m-4 h-12" />
+        ) : data && data.length > 0 ? (
+          data.map((l) => (
+            <div key={l.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">
+                  {l.user?.name} · {l.type.toLowerCase()}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDate(l.startDate)} – {fmtDate(l.endDate)}
+                  {l.reason && ` · ${l.reason}`}
+                </p>
+              </div>
+              {l.status === "PENDING" ? (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => decideLeave.mutate({ id: l.id, status: "APPROVED" }, { onError: (e) => toast.error(errMsg(e)) })}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => decideLeave.mutate({ id: l.id, status: "REJECTED" }, { onError: (e) => toast.error(errMsg(e)) })}>
+                    Reject
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => cancelLeave.mutate(l.id, { onError: (e) => toast.error(errMsg(e)) })}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : l.status === "APPROVED" ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">approved</span>
+                  <Button size="sm" variant="outline" onClick={() => cancelLeave.mutate(l.id, { onError: (e) => toast.error(errMsg(e)) })}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">{l.status.toLowerCase()}</span>
+              )}
+            </div>
+          ))
+        ) : (
+          <p className="p-6 text-center text-sm text-muted-foreground">No leave requests.</p>
+        )}
+      </Card>
+    </div>
   );
 }
 
 function RunDetail({ branchId, id }: { branchId: string | null; id: string }) {
   const { data } = usePayrollRun(branchId, id);
-  const { finalizeRun, deleteRun } = useHrActions(branchId);
+  const { finalizeRun, deleteRun, downloadPayslip } = useHrActions(branchId);
   if (!data) return <Skeleton className="h-24" />;
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -147,14 +381,28 @@ function RunDetail({ branchId, id }: { branchId: string | null; id: string }) {
           {fmtDate(data.periodStart)} – {fmtDate(data.periodEnd)} · {data.status.toLowerCase()} · tip pool{" "}
           {formatCurrency(data.tipPool)}
         </p>
-        {data.status === "DRAFT" && (
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => finalizeRun.mutate(id, { onSuccess: () => toast.success("Payroll finalized"), onError: (e) => toast.error(errMsg(e)) })}>
-              Finalize
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => deleteRun.mutate(id)}>Discard draft</Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              downloadPayslip.mutate(id, {
+                onSuccess: () => toast.success("Payslip downloaded"),
+                onError: (e) => toast.error(errMsg(e)),
+              })
+            }
+          >
+            Export CSV
+          </Button>
+          {data.status === "DRAFT" && (
+            <>
+              <Button size="sm" onClick={() => finalizeRun.mutate(id, { onSuccess: () => toast.success("Payroll finalized"), onError: (e) => toast.error(errMsg(e)) })}>
+                Finalize
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => deleteRun.mutate(id)}>Discard draft</Button>
+            </>
+          )}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -258,7 +506,7 @@ function Payroll({ branchId }: { branchId: string | null }) {
           Run payroll
         </Button>
         <p className="w-full text-xs text-muted-foreground">
-          Uses clocked hours from Attendance, approved unpaid leave, and splits the period&rsquo;s tips by hours worked.
+          Uses clocked hours from Attendance, approved unpaid leave, and splits the period&rsquo;s tips by hours worked. PF/ESI rates come from Settings → Team &amp; payroll.
         </p>
       </Card>
       {runs?.map((r) => (
@@ -281,6 +529,16 @@ function Payroll({ branchId }: { branchId: string | null }) {
 function Performance({ branchId }: { branchId: string | null }) {
   const [range, setRange] = useState(() => ({ from: iso(addDays(new Date(), -29)), to: iso(new Date()) }));
   const { data, isLoading } = usePerformance(branchId, range.from, range.to);
+  const { data: staff } = usePay(branchId);
+  const { createReview, deleteReview } = useHrActions(branchId);
+  const [form, setForm] = useState({
+    userId: "",
+    periodStart: iso(addDays(new Date(), -29)),
+    periodEnd: iso(new Date()),
+    rating: "4",
+    note: "",
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2">
@@ -296,7 +554,7 @@ function Performance({ branchId }: { branchId: string | null }) {
               <tr><th className="py-1">Staff</th><th>Orders</th><th>Sales</th><th>Tips</th><th>Hours</th><th className="text-right">Sales / hour</th></tr>
             </thead>
             <tbody>
-              {data?.map((r) => (
+              {data?.metrics.map((r) => (
                 <tr key={r.userId} className="border-t border-border">
                   <td className="py-1.5">{r.name}</td>
                   <td>{r.orders}</td>
@@ -308,6 +566,83 @@ function Performance({ branchId }: { branchId: string | null }) {
               ))}
             </tbody>
           </table>
+        )}
+      </Card>
+
+      <Card className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+        <select
+          aria-label="Staff"
+          value={form.userId}
+          onChange={(e) => setForm({ ...form, userId: e.target.value })}
+          className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+        >
+          <option value="">Staff…</option>
+          {staff?.map((s) => (
+            <option key={s.userId} value={s.userId}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <Input type="date" value={form.periodStart} onChange={(e) => setForm({ ...form, periodStart: e.target.value })} />
+        <Input type="date" value={form.periodEnd} onChange={(e) => setForm({ ...form, periodEnd: e.target.value })} />
+        <select
+          aria-label="Rating"
+          value={form.rating}
+          onChange={(e) => setForm({ ...form, rating: e.target.value })}
+          className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+        >
+          {[5, 4, 3, 2, 1].map((n) => (
+            <option key={n} value={n}>
+              {n} / 5
+            </option>
+          ))}
+        </select>
+        <Input placeholder="Note" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+        <Button
+          disabled={!form.userId || createReview.isPending}
+          onClick={() =>
+            createReview.mutate(
+              {
+                userId: form.userId,
+                periodStart: form.periodStart,
+                periodEnd: form.periodEnd,
+                rating: Number(form.rating),
+                note: form.note || undefined,
+              },
+              {
+                onSuccess: () => {
+                  toast.success("Review saved");
+                  setForm({ ...form, note: "" });
+                },
+                onError: (e) => toast.error(errMsg(e)),
+              },
+            )
+          }
+        >
+          Add review
+        </Button>
+      </Card>
+
+      <Card className="flex flex-col divide-y divide-border p-2">
+        {data?.reviews?.length ? (
+          data.reviews.map((r) => (
+            <div key={r.id} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">
+                  {r.user.name} · {r.rating}/5
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {fmtDate(r.periodStart)} – {fmtDate(r.periodEnd)} · by {r.createdBy.name}
+                </p>
+                {r.note && <p className="mt-1 text-muted-foreground">{r.note}</p>}
+              </div>
+              <Button size="sm" variant="outline" onClick={() => deleteReview.mutate(r.id)}>
+                Remove
+              </Button>
+            </div>
+          ))
+        ) : (
+          <p className="p-6 text-center text-sm text-muted-foreground">No performance reviews in this range.</p>
         )}
       </Card>
     </div>

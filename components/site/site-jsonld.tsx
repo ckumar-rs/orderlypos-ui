@@ -29,14 +29,15 @@ export function SiteJsonLd() {
         operatingSystem: "Web",
         url: `${origin}/orderlyPOS`,
         description:
-          "Agentic restaurant POS for a cafe, a dining room, a kiosk, or a group of branches. The floor runs on a computer in the restaurant. Ask reads that service.",
+          "Agentic restaurant POS for a cafe, a dining room, a kiosk, or a group of branches. Runs on phone, tablet, kiosk, or computer. Ask reads that service.",
         publisher: { "@id": "https://www.contrivya.com/#organization" },
         featureList: [
+          "Runs on phone, tablet, kiosk, or computer",
           "Guests order by table QR, on a kiosk, or from a WhatsApp catalog",
           "Billing, tables, kitchen display, and a guest kiosk",
           "Ask reads the open branch and does not take a payment",
           "The owner chooses whether agents draft a change or send it",
-          "Reports, the drawer, and journals stay on the restaurant computer",
+          "Reports, the drawer, and journals stay on the restaurant host",
         ],
         offers: [
           {

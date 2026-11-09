@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,24 +13,45 @@ import {
   useBranchOverview,
   useClosingPreview,
   useClosings,
+  useConsolidatedPnl,
   useExpenses,
   useHqEvents,
   usePettyCash,
+  usePeriodLocks,
   useGst,
   useProfitLoss,
   useSyncStatus,
   useTallyPosts,
+  useTillHistory,
 } from "@/hooks/use-accounting";
 import { useBranch } from "@/hooks/use-branch";
-import { ApiError } from "@/lib/api";
+import { useSettings } from "@/hooks/use-settings";
+import { api, ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BalanceSheetTab, BankTab, BudgetsTab } from "@/components/accounting/finance-tabs";
 import { JournalsTab } from "@/components/accounting/journals-tab";
+import { ModulePageShell } from "@/components/layout/module-page-shell";
+import { ModuleLocalSectionNav } from "@/components/layout/module-section-nav";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const errMsg = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong");
-const TABS = ["expenses", "petty cash", "journals", "tally", "cash close", "profit & loss", "balance sheet", "budgets", "bank", "gst", "branches"] as const;
+
+async function downloadExport(path: string, filename: string) {
+  const res = await fetch(path, { credentials: "include" });
+  if (!res.ok) {
+    toast.error("Could not prepare the export");
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+const TABS = ["expenses", "petty cash", "journals", "tally", "cash close", "profit & loss", "balance sheet", "budgets", "bank", "gst", "branches", "locks", "tills"] as const;
 type Tab = (typeof TABS)[number];
 
 function monthRange() {
@@ -66,39 +88,106 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 
 function Expenses({ branchId }: { branchId: string | null }) {
   const [range, setRange] = useState(monthRange);
+  const qc = useQueryClient();
   const { data, isLoading } = useExpenses(branchId, range.from, range.to);
-  const { addExpense, deleteExpense, decideExpense } = useAccountingActions(branchId);
-  const [f, setF] = useState({ spentOn: iso(new Date()), category: "", amount: "", note: "", paidFromCash: false });
+  const { data: settings } = useSettings(branchId);
+  const categories = settings?.branch.expenseCategories ?? [];
+  const { addExpense, updateExpense, deleteExpense, decideExpense } = useAccountingActions(branchId);
+  const uploadAttachment = useMutation({
+    mutationFn: ({ expenseId, file }: { expenseId: string; file: File }) =>
+      api.upload(`/accounting/expenses/${expenseId}/attachments?branchId=${branchId}`, file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["acct", "expenses"] }),
+  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const blank = {
+    spentOn: iso(new Date()),
+    category: "",
+    amount: "",
+    note: "",
+    vendor: "",
+    paidFromCash: false,
+  };
+  const [f, setF] = useState(blank);
   const total = data?.reduce((s, e) => s + Number(e.amount), 0) ?? 0;
+
+  const reset = () => {
+    setEditingId(null);
+    setF(blank);
+  };
 
   const submit = () => {
     const amount = Number(f.amount);
     if (!f.category.trim() || !(amount > 0)) return toast.error("Enter a category and an amount");
-    addExpense.mutate(
-      { spentOn: f.spentOn, category: f.category.trim(), amount, note: f.note || undefined, paidFromCash: f.paidFromCash },
-      {
-        onSuccess: () => {
-          toast.success("Expense added");
-          setF({ ...f, category: "", amount: "", note: "" });
+    const dto = {
+      spentOn: f.spentOn,
+      category: f.category.trim(),
+      amount,
+      note: f.note || undefined,
+      vendor: f.vendor.trim() || undefined,
+      paidFromCash: f.paidFromCash,
+    };
+    if (editingId) {
+      updateExpense.mutate(
+        { id: editingId, dto },
+        {
+          onSuccess: () => {
+            toast.success("Expense updated");
+            reset();
+          },
+          onError: (e) => toast.error(errMsg(e)),
         },
-        onError: (e) => toast.error(errMsg(e)),
+      );
+      return;
+    }
+    addExpense.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Expense added");
+        reset();
       },
-    );
+      onError: (e) => toast.error(errMsg(e)),
+    });
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
+      <Card className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
         <Input type="date" value={f.spentOn} onChange={(e) => setF({ ...f, spentOn: e.target.value })} />
-        <Input placeholder="Category (Rent, Supplies…)" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} />
+        {categories.length > 0 ? (
+          <select
+            aria-label="Category"
+            value={f.category}
+            onChange={(e) => setF({ ...f, category: e.target.value })}
+            className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
+          >
+            <option value="">Category…</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Input placeholder="Category (Rent, Supplies…)" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} />
+        )}
         <Input placeholder="Amount" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
+        <Input placeholder="Vendor (optional)" value={f.vendor} onChange={(e) => setF({ ...f, vendor: e.target.value })} />
         <Input placeholder="Note" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={f.paidFromCash} onChange={(e) => setF({ ...f, paidFromCash: e.target.checked })} />
           Paid from till
         </label>
-        <div className="sm:col-span-2 lg:col-span-5">
-          <Button onClick={submit} disabled={addExpense.isPending}>Add expense</Button>
+        <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
+          <Button onClick={submit} disabled={addExpense.isPending || updateExpense.isPending}>
+            {editingId ? "Save" : "Create"}
+          </Button>
+          {editingId && (
+            <Button variant="outline" onClick={reset}>
+              Cancel
+            </Button>
+          )}
+          <p className="self-center text-xs text-muted-foreground">
+            Categories and approval rules are in Settings → Accounting.
+          </p>
         </div>
       </Card>
       <RangePicker range={range} onChange={setRange} />
@@ -108,15 +197,65 @@ function Expenses({ branchId }: { branchId: string | null }) {
         ) : data && data.length > 0 ? (
           <>
             {data.map((e) => (
-              <div key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                <span>
+              <div key={e.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                <span className="min-w-0 flex-1">
                   <span className="font-medium text-foreground">{e.category}</span>
                   <span className="text-muted-foreground"> · {e.spentOn.slice(0, 10)} · {e.status.toLowerCase()}{e.note && ` · ${e.note}`}{e.paidFromCash && " · till"}</span>
+                  {(e.attachments?.length ?? 0) > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-2 text-xs">
+                      {e.attachments!.map((att) => (
+                        <a
+                          key={att.id}
+                          className="underline"
+                          href={`/api/v1/accounting/expenses/${e.id}/attachments/${att.id}?branchId=${branchId}`}
+                        >
+                          {att.fileName}
+                        </a>
+                      ))}
+                    </span>
+                  )}
                 </span>
-                <span className="flex items-center gap-3">
+                <span className="flex flex-wrap items-center gap-2">
+                  <label className="cursor-pointer text-xs underline">
+                    Receipt
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*,.pdf"
+                      onChange={(ev) => {
+                        const file = ev.target.files?.[0];
+                        ev.target.value = "";
+                        if (!file || !branchId) return;
+                        uploadAttachment.mutate(
+                          { expenseId: e.id, file },
+                          {
+                            onSuccess: () => toast.success("Receipt attached"),
+                            onError: (err) => toast.error(errMsg(err)),
+                          },
+                        );
+                      }}
+                    />
+                  </label>
                   {formatCurrency(e.amount)}
                   {e.status === "PENDING" && (
                     <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(e.id);
+                          setF({
+                            spentOn: e.spentOn.slice(0, 10),
+                            category: e.category,
+                            amount: String(Number(e.amount)),
+                            note: e.note ?? "",
+                            vendor: e.vendor ?? "",
+                            paidFromCash: e.paidFromCash,
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
                       <Button size="sm" onClick={() => decideExpense.mutate({ id: e.id, status: "APPROVED" }, { onError: (err) => toast.error(errMsg(err)) })}>
                         Approve
                       </Button>
@@ -125,7 +264,18 @@ function Expenses({ branchId }: { branchId: string | null }) {
                       </Button>
                     </>
                   )}
-                  <Button size="sm" variant="outline" onClick={() => deleteExpense.mutate(e.id, { onError: (err) => toast.error(errMsg(err)) })}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      deleteExpense.mutate(e.id, {
+                        onSuccess: () => {
+                          if (editingId === e.id) reset();
+                        },
+                        onError: (err) => toast.error(errMsg(err)),
+                      })
+                    }
+                  >
                     Delete
                   </Button>
                 </span>
@@ -147,8 +297,10 @@ function Expenses({ branchId }: { branchId: string | null }) {
 function PettyCash({ branchId }: { branchId: string | null }) {
   const [range, setRange] = useState(monthRange());
   const { data } = usePettyCash(branchId, range.from, range.to);
-  const { addPettyCash } = useAccountingActions(branchId);
-  const [form, setForm] = useState({ direction: "OUT" as "IN" | "OUT", amount: "", reason: "", spentOn: iso(new Date()) });
+  const { addPettyCash, updatePettyCash, deletePettyCash } = useAccountingActions(branchId);
+  const blank = { direction: "OUT" as "IN" | "OUT", amount: "", reason: "", spentOn: iso(new Date()) };
+  const [form, setForm] = useState(blank);
+  const [editingId, setEditingId] = useState<string | null>(null);
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-3 p-4">
@@ -172,22 +324,76 @@ function PettyCash({ branchId }: { branchId: string | null }) {
             onClick={() => {
               const amount = Number(form.amount);
               if (!(amount > 0) || !form.reason.trim()) return;
-              addPettyCash.mutate(
-                { ...form, amount, reason: form.reason.trim() },
-                { onSuccess: () => setForm({ ...form, amount: "", reason: "" }), onError: (err) => toast.error(errMsg(err)) },
-              );
+              const dto = { ...form, amount, reason: form.reason.trim() };
+              if (editingId) {
+                updatePettyCash.mutate(
+                  { id: editingId, dto },
+                  {
+                    onSuccess: () => {
+                      toast.success("Entry updated");
+                      setEditingId(null);
+                      setForm(blank);
+                    },
+                    onError: (err) => toast.error(errMsg(err)),
+                  },
+                );
+                return;
+              }
+              addPettyCash.mutate(dto, {
+                onSuccess: () => setForm({ ...form, amount: "", reason: "" }),
+                onError: (err) => toast.error(errMsg(err)),
+              });
             }}
           >
-            Record
+            {editingId ? "Save" : "Record"}
           </Button>
+          {editingId && (
+            <Button variant="outline" onClick={() => { setEditingId(null); setForm(blank); }}>
+              Cancel
+            </Button>
+          )}
         </div>
       </Card>
       <RangePicker range={range} onChange={setRange} />
       <Card className="flex flex-col divide-y divide-border p-2">
         {(data?.entries ?? []).map((entry) => (
-          <div key={entry.id} className="flex justify-between px-4 py-2 text-sm">
+          <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
             <span>{entry.spentOn.slice(0, 10)} · {entry.direction === "IN" ? "In" : "Out"} · {entry.reason}</span>
-            <span>{entry.direction === "IN" ? "" : "−"}{formatCurrency(entry.amount)}</span>
+            <span className="flex items-center gap-2">
+              {entry.direction === "IN" ? "" : "−"}{formatCurrency(entry.amount)}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingId(entry.id);
+                  setForm({
+                    direction: entry.direction,
+                    amount: String(Number(entry.amount)),
+                    reason: entry.reason,
+                    spentOn: entry.spentOn.slice(0, 10),
+                  });
+                }}
+              >
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  deletePettyCash.mutate(entry.id, {
+                    onSuccess: () => {
+                      if (editingId === entry.id) {
+                        setEditingId(null);
+                        setForm(blank);
+                      }
+                    },
+                    onError: (err) => toast.error(errMsg(err)),
+                  })
+                }
+              >
+                Delete
+              </Button>
+            </span>
           </div>
         ))}
         {(data?.entries.length ?? 0) === 0 && <p className="p-6 text-center text-sm text-muted-foreground">No petty cash in this range.</p>}
@@ -278,34 +484,77 @@ function TallyExport({ branchId }: { branchId: string | null }) {
 
 function CashClose({ branchId }: { branchId: string | null }) {
   const [date, setDate] = useState(() => iso(new Date()));
-  const [floor, setFloor] = useState("0");
+  const [floor, setFloor] = useState("");
   const [counted, setCounted] = useState("");
+  const [bankDrop, setBankDrop] = useState("");
+  const [safeDrop, setSafeDrop] = useState("");
   const [note, setNote] = useState("");
-  const { data: preview } = useClosingPreview(branchId, date, Number(floor) || 0);
+  const floatParam = floor === "" ? null : Number(floor) || 0;
+  const { data: preview } = useClosingPreview(branchId, date, floatParam);
   const { data: closings } = useClosings(branchId);
-  const { closeDay } = useAccountingActions(branchId);
-  const variance = preview && counted !== "" ? Number(counted) - preview.expectedCash : null;
+  const { closeDay, reopenClosing } = useAccountingActions(branchId);
+  const effectiveFloat = preview?.openingFloat ?? 0;
+  const expected = preview?.expectedCash ?? null;
+  const variance = expected != null && counted !== "" ? Number(counted) - expected : null;
+  const warn = preview?.varianceWarnAmount ?? 0;
+  const countedNum = counted === "" ? 0 : Number(counted) || 0;
+  const bankNum = Number(bankDrop) || 0;
+  const safeNum = Number(safeDrop) || 0;
+  const retained = counted !== "" ? Math.max(0, countedNum - bankNum - safeNum) : null;
 
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap gap-3">
           <Input type="date" className="w-40" value={date} onChange={(e) => setDate(e.target.value)} />
-          <Input className="w-40" inputMode="decimal" placeholder="Opening float" value={floor} onChange={(e) => setFloor(e.target.value)} />
+          <Input
+            className="w-40"
+            inputMode="decimal"
+            placeholder={
+              preview
+                ? `Float (sug. ${preview.suggestedOpeningFloat})`
+                : "Opening float"
+            }
+            value={floor}
+            onChange={(e) => setFloor(e.target.value)}
+          />
         </div>
-        {preview && (
+        {preview && expected != null && (
           <div>
-            <Row label="Opening float" value={formatCurrency(preview.openingFloat)} />
+            <Row label="Opening float" value={formatCurrency(effectiveFloat)} />
             <Row label="Cash sales (net of cash refunds)" value={formatCurrency(preview.cashSales)} />
-            <Row label="Cash expenses" value={`− ${formatCurrency(preview.cashExpenses)}`} />
-            <Row strong label="Expected in till" value={formatCurrency(preview.expectedCash)} />
+            <Row label="Cash expenses (approved)" value={`− ${formatCurrency(preview.cashExpenses)}`} />
+            {preview.pettyCashInTillClose && (preview.pettyNetOut ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Petty cash OUT today ({formatCurrency(preview.pettyNetOut ?? 0)}) is included in cash expenses (Settings → Accounting).
+              </p>
+            )}
+            <Row strong label="Expected in till" value={formatCurrency(expected)} />
           </div>
         )}
         <div className="flex flex-wrap items-center gap-3">
           <Input className="w-40" inputMode="decimal" placeholder="Counted cash" value={counted} onChange={(e) => setCounted(e.target.value)} />
+          <Input className="w-36" inputMode="decimal" placeholder="Bank drop" value={bankDrop} onChange={(e) => setBankDrop(e.target.value)} />
+          <Input className="w-36" inputMode="decimal" placeholder="Safe drop" value={safeDrop} onChange={(e) => setSafeDrop(e.target.value)} />
+          {retained != null && (
+            <span className="text-sm text-muted-foreground">Retained in till: {formatCurrency(retained)}</span>
+          )}
           {variance != null && (
-            <span className={cn("text-sm", variance === 0 ? "text-success" : "text-destructive")}>
-              {variance === 0 ? "Balanced" : `${variance > 0 ? "Over" : "Short"} by ${formatCurrency(Math.abs(variance))}`}
+            <span
+              className={cn(
+                "text-sm",
+                variance === 0
+                  ? "text-success"
+                  : warn > 0 && Math.abs(variance) >= warn
+                    ? "text-destructive font-medium"
+                    : "text-destructive",
+              )}
+            >
+              {variance === 0
+                ? "Balanced"
+                : `${variance > 0 ? "Over" : "Short"} by ${formatCurrency(Math.abs(variance))}${
+                    warn > 0 && Math.abs(variance) >= warn ? " · above warn threshold" : ""
+                  }`}
             </span>
           )}
         </div>
@@ -315,8 +564,24 @@ function CashClose({ branchId }: { branchId: string | null }) {
             disabled={counted === "" || closeDay.isPending}
             onClick={() =>
               closeDay.mutate(
-                { businessDate: date, openingFloat: Number(floor) || 0, countedCash: Number(counted), note: note || undefined },
-                { onSuccess: () => { toast.success("Day closed"); setCounted(""); setNote(""); }, onError: (e) => toast.error(errMsg(e)) },
+                {
+                  businessDate: date,
+                  openingFloat: effectiveFloat,
+                  countedCash: Number(counted),
+                  bankDrop: bankNum || undefined,
+                  safeDrop: safeNum || undefined,
+                  note: note || undefined,
+                },
+                {
+                  onSuccess: () => {
+                    toast.success("Day closed");
+                    setCounted("");
+                    setBankDrop("");
+                    setSafeDrop("");
+                    setNote("");
+                  },
+                  onError: (e) => toast.error(errMsg(e)),
+                },
               )
             }
           >
@@ -327,11 +592,26 @@ function CashClose({ branchId }: { branchId: string | null }) {
       <Card className="flex flex-col divide-y divide-border p-2">
         {closings && closings.length > 0 ? (
           closings.map((c) => (
-            <div key={c.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+            <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
               <span>{c.businessDate.slice(0, 10)}</span>
               <span className="text-muted-foreground">
-                expected {formatCurrency(c.expectedCash)} · counted {formatCurrency(c.countedCash)} · variance {formatCurrency(c.variance)}
+                expected {formatCurrency(c.expectedCash)} · counted {formatCurrency(c.countedCash)}
+                {c.bankDrop != null && Number(c.bankDrop) > 0 ? ` · bank ${formatCurrency(c.bankDrop)}` : ""}
+                {c.safeDrop != null && Number(c.safeDrop) > 0 ? ` · safe ${formatCurrency(c.safeDrop)}` : ""}
+                {" · "}variance {formatCurrency(c.variance)}
               </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  reopenClosing.mutate(c.id, {
+                    onSuccess: () => toast.success("Day reopened — recount and close again"),
+                    onError: (e) => toast.error(errMsg(e)),
+                  })
+                }
+              >
+                Reopen
+              </Button>
             </div>
           ))
         ) : (
@@ -347,7 +627,22 @@ function ProfitLossTab({ branchId }: { branchId: string | null }) {
   const { data } = useProfitLoss(branchId, range.from, range.to);
   return (
     <div className="flex flex-col gap-4">
-      <RangePicker range={range} onChange={setRange} />
+      <div className="flex flex-wrap items-center gap-3">
+        <RangePicker range={range} onChange={setRange} />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!branchId}
+          onClick={() =>
+            void downloadExport(
+              `/api/v1/accounting/profit-loss/export?branchId=${branchId}&from=${range.from}&to=${range.to}`,
+              `profit-loss-${range.from}-${range.to}.csv`,
+            )
+          }
+        >
+          Download CSV
+        </Button>
+      </div>
       <Card className="p-4">
         {data ? (
           <div>
@@ -355,11 +650,16 @@ function ProfitLossTab({ branchId }: { branchId: string | null }) {
             <Row label="Tax collected" value={`− ${formatCurrency(data.taxCollected)}`} />
             <Row label="Refunds" value={`− ${formatCurrency(data.refunds)}`} />
             <Row strong label="Net sales" value={formatCurrency(data.netSales)} />
+            <Row label="COGS (menu cost prices)" value={`− ${formatCurrency(data.cogs ?? 0)}`} />
+            <Row strong label="Gross profit" value={formatCurrency(data.grossProfit ?? data.netSales)} />
             {data.expenses.map((e) => (
               <Row key={e.category} label={e.category} value={`− ${formatCurrency(e.amount)}`} />
             ))}
             <Row label="Payroll (finalized runs)" value={`− ${formatCurrency(data.payrollCost)}`} />
             <Row strong label="Net profit" value={formatCurrency(data.netProfit)} />
+            <p className="mt-2 text-xs text-muted-foreground">
+              COGS uses each dish&apos;s cost price × quantity. Set cost prices on menu items for accurate food cost.
+            </p>
           </div>
         ) : (
           <Skeleton className="h-32" />
@@ -374,7 +674,35 @@ function GstTab({ branchId }: { branchId: string | null }) {
   const { data } = useGst(branchId, range.from, range.to);
   return (
     <div className="flex flex-col gap-4">
-      <RangePicker range={range} onChange={setRange} />
+      <div className="flex flex-wrap items-center gap-3">
+        <RangePicker range={range} onChange={setRange} />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!branchId}
+          onClick={() =>
+            void downloadExport(
+              `/api/v1/accounting/gst/export?branchId=${branchId}&from=${range.from}&to=${range.to}`,
+              `gst-${range.from}-${range.to}.csv`,
+            )
+          }
+        >
+          Download CSV
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!branchId}
+          onClick={() =>
+            void downloadExport(
+              `/api/v1/accounting/gst/gstr1?branchId=${branchId}&from=${range.from}&to=${range.to}`,
+              `gstr1-${range.from}-${range.to}.json`,
+            )
+          }
+        >
+          GSTR-1 JSON
+        </Button>
+      </div>
       <Card className="overflow-x-auto p-4">
         {data ? (
           <table className="w-full text-sm">
@@ -414,6 +742,7 @@ function GstTab({ branchId }: { branchId: string | null }) {
 function BranchesTab() {
   const [range, setRange] = useState(monthRange);
   const { data } = useBranchOverview(range.from, range.to);
+  const { data: consolidated } = useConsolidatedPnl(range.from, range.to);
   const { data: sync } = useSyncStatus();
   const { data: events } = useHqEvents();
   const { tickSync } = useAccountingActions(null);
@@ -456,6 +785,37 @@ function BranchesTab() {
         </div>
       </Card>
       <RangePicker range={range} onChange={setRange} />
+      {consolidated && (
+        <Card className="p-4">
+          <h2 className="mb-2 text-sm font-semibold">Consolidated P&amp;L</h2>
+          <div className="mb-3 text-sm">
+            <Row label="Net sales" value={formatCurrency(consolidated.totals.netSales)} />
+            <Row label="Gross profit" value={formatCurrency(consolidated.totals.grossProfit)} />
+            <Row label="Total expenses" value={`− ${formatCurrency(consolidated.totals.totalExpenses)}`} />
+            <Row strong label="Net profit (all branches)" value={formatCurrency(consolidated.totals.netProfit)} />
+          </div>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="py-1">Branch</th>
+                <th>Orders</th>
+                <th>Net sales</th>
+                <th className="text-right">Net profit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {consolidated.branches.map((b) => (
+                <tr key={b.branchId} className="border-t border-border">
+                  <td className="py-1.5">{b.name}</td>
+                  <td>{b.orders}</td>
+                  <td>{formatCurrency(b.netSales)}</td>
+                  <td className="text-right">{formatCurrency(b.netProfit)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
       <Card className="overflow-x-auto p-4">
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-muted-foreground">
@@ -479,31 +839,128 @@ function BranchesTab() {
   );
 }
 
+function PeriodLocksTab({ branchId }: { branchId: string | null }) {
+  const { data, isLoading } = usePeriodLocks(branchId);
+  const { createPeriodLock, deletePeriodLock } = useAccountingActions(branchId);
+  const [form, setForm] = useState({ fromDate: iso(new Date()), toDate: iso(new Date()), reason: "" });
+  return (
+    <div className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-3 p-4">
+        <p className="text-sm text-muted-foreground">
+          Locked periods block expenses, journals, and day-close edits for dates inside the range.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Input type="date" className="w-40" value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value })} />
+          <Input type="date" className="w-40" value={form.toDate} onChange={(e) => setForm({ ...form, toDate: e.target.value })} />
+          <Input placeholder="Reason (optional)" className="min-w-48 flex-1" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />
+          <Button
+            disabled={!branchId || createPeriodLock.isPending}
+            onClick={() =>
+              createPeriodLock.mutate(
+                { fromDate: form.fromDate, toDate: form.toDate, reason: form.reason.trim() || undefined },
+                {
+                  onSuccess: () => {
+                    toast.success("Period locked");
+                    setForm({ ...form, reason: "" });
+                  },
+                  onError: (e) => toast.error(errMsg(e)),
+                },
+              )
+            }
+          >
+            Lock period
+          </Button>
+        </div>
+      </Card>
+      <Card className="flex flex-col divide-y divide-border p-2">
+        {isLoading ? (
+          <Skeleton className="m-4 h-12" />
+        ) : (data?.length ?? 0) > 0 ? (
+          data!.map((lock) => (
+            <div key={lock.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+              <span>
+                {lock.fromDate.slice(0, 10)} → {lock.toDate.slice(0, 10)}
+                {lock.reason ? ` · ${lock.reason}` : ""}
+                <span className="text-muted-foreground"> · {new Date(lock.lockedAt).toLocaleString()}</span>
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  deletePeriodLock.mutate(lock.id, {
+                    onSuccess: () => toast.success("Lock removed"),
+                    onError: (e) => toast.error(errMsg(e)),
+                  })
+                }
+              >
+                Unlock
+              </Button>
+            </div>
+          ))
+        ) : (
+          <p className="p-6 text-center text-sm text-muted-foreground">No period locks.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function TillsTab({ branchId }: { branchId: string | null }) {
+  const [range, setRange] = useState(monthRange);
+  const { data, isLoading } = useTillHistory(branchId, range.from, range.to);
+  return (
+    <div className="flex flex-col gap-4">
+      <RangePicker range={range} onChange={setRange} />
+      <Card className="flex flex-col divide-y divide-border p-2">
+        {isLoading ? (
+          <Skeleton className="m-4 h-12" />
+        ) : (data?.length ?? 0) > 0 ? (
+          data!.map((row) => (
+            <div key={row.id} className="px-4 py-2.5 text-sm">
+              <p className="font-medium">
+                Opened {new Date(row.openedAt).toLocaleString()} by {row.openedBy.name}
+                {row.closedAt ? ` · closed ${new Date(row.closedAt).toLocaleString()}` : " · open"}
+                {row.closedBy ? ` by ${row.closedBy.name}` : ""}
+              </p>
+              <p className="text-muted-foreground">
+                Float {formatCurrency(row.openingFloat)}
+                {row.expectedCash != null ? ` · expected ${formatCurrency(row.expectedCash)}` : ""}
+                {row.countedCash != null ? ` · counted ${formatCurrency(row.countedCash)}` : ""}
+                {row.note ? ` · ${row.note}` : ""}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p className="p-6 text-center text-sm text-muted-foreground">No till sessions in this range.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+const ACCOUNTING_NAV = TABS.map((t) => ({ id: t, label: t }));
+
 export default function AccountingPage() {
   const { branchId } = useBranch();
   const [tab, setTab] = useState<Tab>("expenses");
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Accounting</h1>
-        <p className="text-sm text-muted-foreground">Expenses, journals, cash close, profit &amp; loss, balance sheet, budgets, bank reconciliation, tax and branches</p>
-        <Link href="/accounting/till" className="text-sm underline">Shift till</Link>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={cn(
-              "rounded-full border px-3.5 py-1 text-xs capitalize transition-colors",
-              tab === t ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-secondary",
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+    <ModulePageShell
+      title="Accounting"
+      description="Expenses, journals, cash close, P&L, tax, and branches"
+      actions={
+        <Link href="/accounting/till" className="text-sm underline">
+          Shift till
+        </Link>
+      }
+      nav={
+        <ModuleLocalSectionNav
+          title="Accounting"
+          items={ACCOUNTING_NAV}
+          value={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
+      }
+    >
       {tab === "expenses" && <Expenses branchId={branchId} />}
       {tab === "petty cash" && <PettyCash branchId={branchId} />}
       {tab === "journals" && <JournalsTab branchId={branchId} />}
@@ -515,6 +972,8 @@ export default function AccountingPage() {
       {tab === "bank" && <BankTab branchId={branchId} />}
       {tab === "gst" && <GstTab branchId={branchId} />}
       {tab === "branches" && <BranchesTab />}
-    </div>
+      {tab === "locks" && <PeriodLocksTab branchId={branchId} />}
+      {tab === "tills" && <TillsTab branchId={branchId} />}
+    </ModulePageShell>
   );
 }

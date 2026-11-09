@@ -3,7 +3,6 @@
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,12 +28,6 @@ export default function SecurityPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Protect your account</p>
-      </div>
-      <SettingsTabs />
-
       <Card className="flex max-w-xl flex-col gap-4 p-6">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Two-factor authentication</h2>
@@ -158,6 +151,7 @@ function Passkeys() {
     queryKey: ["webauthn"],
     queryFn: () => api.get<{ id: string; createdAt: string }[]>("/auth/webauthn"),
   });
+  const [busyId, setBusyId] = useState<string | null>(null);
   return (
     <Card className="flex max-w-xl flex-col gap-3 p-6">
       <div>
@@ -166,7 +160,44 @@ function Passkeys() {
           Sign in with this device&apos;s fingerprint, face, or screen lock. The server checks the signature.
         </p>
       </div>
-      <p className="text-sm">{passkeys.data?.length ?? 0} passkey{(passkeys.data?.length ?? 0) === 1 ? "" : "s"} on this account</p>
+      {(passkeys.data?.length ?? 0) > 0 ? (
+        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+          {passkeys.data!.map((row, index) => (
+            <li key={row.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+              <div>
+                <p className="font-medium text-foreground">Passkey {index + 1}</p>
+                <p className="text-xs text-muted-foreground">
+                  Added {new Date(row.createdAt).toLocaleString()}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busyId === row.id}
+                onClick={() => {
+                  if (!confirm("Remove this passkey from your account?")) return;
+                  setBusyId(row.id);
+                  void api
+                    .delete(`/auth/webauthn/${row.id}`)
+                    .then(() => {
+                      toast.success("Passkey removed");
+                      void passkeys.refetch();
+                    })
+                    .catch((error) =>
+                      toast.error(error instanceof ApiError ? error.message : "Could not remove the passkey"),
+                    )
+                    .finally(() => setBusyId(null));
+                }}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">No passkeys on this account yet.</p>
+      )}
       <Button
         type="button"
         onClick={() => {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://orderlypos-ui.vercel.app").replace(/\/$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:1995").replace(/\/$/, "");
 }
 
 const shareImage = {

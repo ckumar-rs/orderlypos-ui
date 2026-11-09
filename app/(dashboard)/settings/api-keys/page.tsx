@@ -5,15 +5,17 @@ import { toast } from "sonner";
 import { CreateIntegrationKeyDialog } from "@/components/settings/create-integration-key-dialog";
 import { CreateStaffKeyDialog } from "@/components/settings/create-staff-key-dialog";
 import { NewApiKeyDialog } from "@/components/settings/new-api-key-dialog";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { hasPermission, useCurrentUser } from "@/hooks/use-auth";
 import {
   useIntegrationApiKeys,
+  useRenameIntegrationApiKey,
+  useRenameStaffApiKey,
   useRevokeIntegrationApiKey,
   useRevokeStaffApiKey,
   useStaffApiKeys,
@@ -29,13 +31,6 @@ export default function ApiKeysPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-
-      <SettingsTabs />
-
       <StaffApiKeysCard />
       {canManageIntegrations ? <IntegrationApiKeysCard /> : null}
     </div>
@@ -45,15 +40,40 @@ export default function ApiKeysPage() {
 function StaffApiKeysCard() {
   const { data: keys, isLoading } = useStaffApiKeys();
   const revokeKey = useRevokeStaffApiKey();
+  const renameKey = useRenameStaffApiKey();
   const [showCreate, setShowCreate] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const onRevoke = (key: StaffApiKey) => {
     if (!confirm(`Revoke "${key.name}"? Anything using this key stops working immediately.`)) return;
     revokeKey.mutate(key.id, {
-      onSuccess: () => toast.success("Key revoked"),
+      onSuccess: () => {
+        toast.success("Key revoked");
+        if (editingId === key.id) {
+          setEditingId(null);
+          setEditName("");
+        }
+      },
       onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not revoke key"),
     });
+  };
+
+  const onRename = (key: StaffApiKey) => {
+    const name = editName.trim();
+    if (!name) return toast.error("Enter a name");
+    renameKey.mutate(
+      { id: key.id, dto: { name } },
+      {
+        onSuccess: () => {
+          toast.success("Key renamed");
+          setEditingId(null);
+          setEditName("");
+        },
+        onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not rename key"),
+      },
+    );
   };
 
   return (
@@ -97,7 +117,18 @@ function StaffApiKeysCard() {
           <TableBody>
             {keys.map((key) => (
               <TableRow key={key.id}>
-                <TableCell className="font-medium text-foreground">{key.name}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {editingId === key.id ? (
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="max-w-xs"
+                      aria-label="API key name"
+                    />
+                  ) : (
+                    key.name
+                  )}
+                </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">…{key.lastFour}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : "Never"}
@@ -105,10 +136,38 @@ function StaffApiKeysCard() {
                 <TableCell className="text-right">
                   {key.revokedAt ? (
                     <Badge variant="outline">Revoked</Badge>
+                  ) : editingId === key.id ? (
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" onClick={() => onRename(key)} disabled={renameKey.isPending}>
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditName("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   ) : (
-                    <Button size="sm" variant="destructive" onClick={() => onRevoke(key)}>
-                      Revoke
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(key.id);
+                          setEditName(key.name);
+                        }}
+                      >
+                        Rename
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => onRevoke(key)}>
+                        Revoke
+                      </Button>
+                    </div>
                   )}
                 </TableCell>
               </TableRow>
@@ -136,15 +195,40 @@ function StaffApiKeysCard() {
 function IntegrationApiKeysCard() {
   const { data: keys, isLoading } = useIntegrationApiKeys();
   const revokeKey = useRevokeIntegrationApiKey();
+  const renameKey = useRenameIntegrationApiKey();
   const [showCreate, setShowCreate] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const onRevoke = (key: IntegrationApiKey) => {
     if (!confirm(`Revoke "${key.name}"? Any external website using this key stops working immediately.`)) return;
     revokeKey.mutate(key.id, {
-      onSuccess: () => toast.success("Key revoked"),
+      onSuccess: () => {
+        toast.success("Key revoked");
+        if (editingId === key.id) {
+          setEditingId(null);
+          setEditName("");
+        }
+      },
       onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not revoke key"),
     });
+  };
+
+  const onRename = (key: IntegrationApiKey) => {
+    const name = editName.trim();
+    if (!name) return toast.error("Enter a name");
+    renameKey.mutate(
+      { id: key.id, dto: { name } },
+      {
+        onSuccess: () => {
+          toast.success("Key renamed");
+          setEditingId(null);
+          setEditName("");
+        },
+        onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not rename key"),
+      },
+    );
   };
 
   return (
@@ -178,7 +262,18 @@ function IntegrationApiKeysCard() {
           <TableBody>
             {keys.map((key) => (
               <TableRow key={key.id}>
-                <TableCell className="font-medium text-foreground">{key.name}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {editingId === key.id ? (
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="max-w-xs"
+                      aria-label="API key name"
+                    />
+                  ) : (
+                    key.name
+                  )}
+                </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">…{key.lastFour}</TableCell>
                 <TableCell className="text-muted-foreground">{key.branch?.name ?? "All locations"}</TableCell>
                 <TableCell className="text-muted-foreground">
@@ -193,10 +288,38 @@ function IntegrationApiKeysCard() {
                 <TableCell className="text-right">
                   {key.revokedAt ? (
                     <Badge variant="outline">Revoked</Badge>
+                  ) : editingId === key.id ? (
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" onClick={() => onRename(key)} disabled={renameKey.isPending}>
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditName("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   ) : (
-                    <Button size="sm" variant="destructive" onClick={() => onRevoke(key)}>
-                      Revoke
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingId(key.id);
+                          setEditName(key.name);
+                        }}
+                      >
+                        Rename
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => onRevoke(key)}>
+                        Revoke
+                      </Button>
+                    </div>
                   )}
                 </TableCell>
               </TableRow>

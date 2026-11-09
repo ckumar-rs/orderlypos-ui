@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { useBranch } from "@/hooks/use-branch";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
@@ -30,7 +29,6 @@ export default function RecipeHistoryPage({ params }: { params: Promise<{ id: st
   });
   return (
     <div className="mx-auto flex max-w-xl flex-col gap-4">
-      <InventoryTabs />
       <Link href="/inventory/cost" className="text-sm text-muted-foreground">Back to food cost</Link>
       <h1 className="text-2xl font-semibold">Price history</h1>
       <ol className="flex flex-col gap-3 border-l border-border pl-4">

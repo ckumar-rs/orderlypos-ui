@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { OrderSectionNav } from "@/components/orders/order-section-nav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
@@ -56,7 +55,6 @@ export default function RepeatOrderPage() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-4">
-      <OrderSectionNav />
       <div>
         <h1 className="text-2xl font-semibold">Repeat dishes from an earlier bill</h1>
         <p className="text-sm text-muted-foreground">

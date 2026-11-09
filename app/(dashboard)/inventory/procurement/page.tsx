@@ -1,10 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { CreateInvoiceDialog } from "@/components/inventory/create-invoice-dialog";
 import { CreatePurchaseRequestDialog } from "@/components/inventory/create-purchase-request-dialog";
 import { CreateQuotationDialog } from "@/components/inventory/create-quotation-dialog";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { RecordPaymentDialog } from "@/components/inventory/record-payment-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/table";
 import { useBranch } from "@/hooks/use-branch";
 import {
+  useCancelSupplierInvoice,
+  useDeletePurchaseRequest,
+  useDeleteQuotation,
   usePurchaseRequests,
   useQuotations,
   useSupplierInvoices,
@@ -35,7 +38,9 @@ import {
   type SupplierInvoice,
   type SupplierQuotation,
 } from "@/hooks/use-inventory";
+import { ApiError } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { toast } from "sonner";
 
 const REQUEST_NEXT: Record<PurchaseRequest["status"], PurchaseRequest["status"][]> = {
   DRAFT: ["PENDING_APPROVAL"],
@@ -71,6 +76,8 @@ function EmptyState({ title, description }: { title: string; description: string
 function PurchaseRequestsSection({ branchId }: { branchId: string | null }) {
   const { data: requests, isLoading } = usePurchaseRequests(branchId);
   const updateStatus = useUpdatePurchaseRequestStatus(branchId);
+  const remove = useDeletePurchaseRequest(branchId);
+  const [editing, setEditing] = useState<PurchaseRequest | null>(null);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -79,7 +86,11 @@ function PurchaseRequestsSection({ branchId }: { branchId: string | null }) {
           <h2 className="text-sm font-semibold text-foreground">Purchase requests</h2>
           <p className="text-xs text-muted-foreground">Staff-raised requests, awaiting approval before a PO is cut</p>
         </div>
-        <CreatePurchaseRequestDialog branchId={branchId} />
+        <CreatePurchaseRequestDialog
+          branchId={branchId}
+          editing={editing}
+          onCloseEdit={() => setEditing(null)}
+        />
       </div>
       {isLoading ? (
         <div className="flex flex-col gap-2 p-4">
@@ -109,28 +120,54 @@ function PurchaseRequestsSection({ branchId }: { branchId: string | null }) {
                     <Badge variant="secondary">{r.status.replace("_", " ")}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{r.items.length}</TableCell>
-                  <TableCell className="w-10">
-                    {next.length > 0 && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          {next.map((status) => (
-                            <DropdownMenuItem
-                              key={status}
-                              onClick={() => updateStatus.mutate({ id: r.id, status })}
-                            >
-                              Move to {status.replace("_", " ").toLowerCase()}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+                  <TableCell className="w-48">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      {r.status === "DRAFT" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setEditing(r)}>
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={remove.isPending}
+                            onClick={() => {
+                              if (!window.confirm(`Delete draft ${r.requestNumber}?`)) return;
+                              remove.mutate(r.id, {
+                                onSuccess: () => toast.success(`${r.requestNumber} deleted`),
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof ApiError ? err.message : "Could not delete request",
+                                  ),
+                              });
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
+                      {next.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end">
+                            {next.map((status) => (
+                              <DropdownMenuItem
+                                key={status}
+                                onClick={() => updateStatus.mutate({ id: r.id, status })}
+                              >
+                                Move to {status.replace("_", " ").toLowerCase()}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -150,6 +187,8 @@ function PurchaseRequestsSection({ branchId }: { branchId: string | null }) {
 function QuotationsSection({ branchId }: { branchId: string | null }) {
   const { data: quotations, isLoading } = useQuotations(branchId);
   const updateStatus = useUpdateQuotationStatus(branchId);
+  const remove = useDeleteQuotation(branchId);
+  const [editing, setEditing] = useState<SupplierQuotation | null>(null);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -158,7 +197,11 @@ function QuotationsSection({ branchId }: { branchId: string | null }) {
           <h2 className="text-sm font-semibold text-foreground">Supplier quotations</h2>
           <p className="text-xs text-muted-foreground">Compare prices across suppliers before ordering</p>
         </div>
-        <CreateQuotationDialog branchId={branchId} />
+        <CreateQuotationDialog
+          branchId={branchId}
+          editing={editing}
+          onCloseEdit={() => setEditing(null)}
+        />
       </div>
       {isLoading ? (
         <div className="flex flex-col gap-2 p-4">
@@ -188,28 +231,54 @@ function QuotationsSection({ branchId }: { branchId: string | null }) {
                     <Badge variant="secondary">{q.status}</Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{q.items.length}</TableCell>
-                  <TableCell className="w-10">
-                    {next.length > 0 && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          render={
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                        <DropdownMenuContent align="end">
-                          {next.map((status) => (
-                            <DropdownMenuItem
-                              key={status}
-                              onClick={() => updateStatus.mutate({ id: q.id, status })}
-                            >
-                              Mark {status.toLowerCase()}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
+                  <TableCell className="w-48">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      {q.status === "DRAFT" && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setEditing(q)}>
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={remove.isPending}
+                            onClick={() => {
+                              if (!window.confirm(`Delete draft ${q.quotationNumber}?`)) return;
+                              remove.mutate(q.id, {
+                                onSuccess: () => toast.success(`${q.quotationNumber} deleted`),
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof ApiError ? err.message : "Could not delete quotation",
+                                  ),
+                              });
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
+                      {next.length > 0 && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent align="end">
+                            {next.map((status) => (
+                              <DropdownMenuItem
+                                key={status}
+                                onClick={() => updateStatus.mutate({ id: q.id, status })}
+                              >
+                                Mark {status.toLowerCase()}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -228,6 +297,7 @@ function QuotationsSection({ branchId }: { branchId: string | null }) {
 
 function SupplierInvoicesSection({ branchId }: { branchId: string | null }) {
   const { data: invoices, isLoading } = useSupplierInvoices(branchId);
+  const cancelInvoice = useCancelSupplierInvoice(branchId);
 
   return (
     <Card className="overflow-hidden p-0">
@@ -270,10 +340,32 @@ function SupplierInvoicesSection({ branchId }: { branchId: string | null }) {
                 <TableCell className="text-right tabular-nums">
                   {formatCurrency(Number(inv.amountPaid))}
                 </TableCell>
-                <TableCell className="w-32">
-                  {(inv.status === "UNPAID" || inv.status === "PARTIALLY_PAID") && (
-                    <RecordPaymentDialog branchId={branchId} invoice={inv} />
-                  )}
+                <TableCell className="w-48">
+                  <div className="flex flex-wrap items-center justify-end gap-1">
+                    {(inv.status === "UNPAID" || inv.status === "PARTIALLY_PAID") && (
+                      <RecordPaymentDialog branchId={branchId} invoice={inv} />
+                    )}
+                    {inv.status !== "CANCELLED" && inv.status !== "PAID" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={cancelInvoice.isPending}
+                        onClick={() => {
+                          if (!window.confirm(`Cancel invoice ${inv.invoiceNumber}?`)) return;
+                          cancelInvoice.mutate(inv.id, {
+                            onSuccess: () => toast.success(`${inv.invoiceNumber} cancelled`),
+                            onError: (err) =>
+                              toast.error(
+                                err instanceof ApiError ? err.message : "Could not cancel invoice",
+                              ),
+                          });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -294,15 +386,6 @@ export default function ProcurementPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Inventory</h1>
-        <p className="text-sm text-muted-foreground">
-          Ingredients, recipe costing, purchase orders, and waste
-        </p>
-      </div>
-
-      <InventoryTabs />
-
       <div className="flex flex-col gap-6">
         <PurchaseRequestsSection branchId={branchId} />
         <QuotationsSection branchId={branchId} />

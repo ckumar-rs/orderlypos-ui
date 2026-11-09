@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateReservation } from "@/hooks/use-reservations";
+import { useSettings } from "@/hooks/use-settings";
 import type { RestaurantTable } from "@/hooks/use-tables";
 import { ApiError } from "@/lib/api";
 
@@ -48,10 +49,19 @@ export function AddReservationDialog({
   const [deposit, setDeposit] = useState("");
   const [depositPaid, setDepositPaid] = useState(false);
   const [depositReference, setDepositReference] = useState("");
-  const [depositMethod, setDepositMethod] = useState<"CASH" | "CARD" | "UPI" | "WALLET" | "HOUSE">("HOUSE");
+  const [depositMethod, setDepositMethod] = useState<"CASH" | "CARD" | "UPI" | "WALLET" | "HOUSE">(
+    "UPI",
+  );
   const [seating, setSeating] = useState<"" | "INDOOR" | "OUTDOOR">("");
 
   const createReservation = useCreateReservation(branchId);
+  const { data: settings } = useSettings(branchId);
+  const cashLabel = settings?.restaurant.cashLabel?.trim() || "Cash";
+  const preferredPay = (settings?.restaurant.preferredPaymentMethod ?? "UPI") as
+    | "CASH"
+    | "CARD"
+    | "UPI"
+    | "OTHER";
 
   const reset = () => {
     setCustomerName("");
@@ -63,7 +73,13 @@ export function AddReservationDialog({
     setDeposit("");
     setDepositPaid(false);
     setDepositReference("");
-    setDepositMethod("HOUSE");
+    setDepositMethod(
+      preferredPay === "OTHER" || preferredPay === "CASH" || preferredPay === "CARD" || preferredPay === "UPI"
+        ? preferredPay === "OTHER"
+          ? "HOUSE"
+          : preferredPay
+        : "UPI",
+    );
     setSeating("");
   };
 
@@ -189,11 +205,11 @@ export function AddReservationDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="r-method">Deposit method</Label>
             <select id="r-method" className="h-10 rounded-md border border-input bg-background px-2 text-sm" value={depositMethod} onChange={(e) => setDepositMethod(e.target.value as "CASH" | "CARD" | "UPI" | "WALLET" | "HOUSE")}>
-              <option value="HOUSE">House account</option>
-              <option value="CASH">Cash</option>
-              <option value="CARD">Card</option>
               <option value="UPI">UPI</option>
+              <option value="CASH">{cashLabel}</option>
+              <option value="CARD">Card</option>
               <option value="WALLET">Store-credit wallet</option>
+              <option value="HOUSE">House account</option>
             </select>
           </div>
           <div className="flex flex-col gap-2">

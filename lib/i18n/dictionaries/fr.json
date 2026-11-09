@@ -20,6 +20,8 @@
   "nav.customers": "Clients",
   "nav.inventory": "Inventaire",
   "nav.settings": "Paramètres",
+  "nav.group.floor": "Salle",
+  "nav.group.workspace": "Back-office",
 
   "common.language": "Langue",
   "common.loading": "Chargement…",
@@ -27,6 +29,7 @@
   "common.cancel": "Annuler",
 
   "order.qrNotRecognized": "Ce code QR n'est pas reconnu",
+  "order.menuUnavailable": "Le menu n'a pas pu être chargé",
   "order.askStaffForHelp": "Merci de demander de l'aide à un membre du personnel.",
   "order.thankYouName": "Merci, {name} !",
   "order.thanksMessage": "{branch} vous remercie pour votre commande 🎉",

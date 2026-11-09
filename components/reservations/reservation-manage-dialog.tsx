@@ -1,13 +1,20 @@
 "use client";
 
 import { Check, MessageCircle, Phone, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ChannelBadge } from "@/components/orders/channel-badges";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useUpdateReservationStatus, type Reservation } from "@/hooks/use-reservations";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  useUpdateReservation,
+  useUpdateReservationStatus,
+  type Reservation,
+} from "@/hooks/use-reservations";
 import { ApiError, api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RecordFields } from "@/components/fields/record-fields";
@@ -20,6 +27,12 @@ const when = (iso: string) =>
     hour: "numeric",
     minute: "2-digit",
   });
+
+function toLocalInput(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // Manage window for a table booking: see who/when, call or WhatsApp the
 // guest, and accept / reject / cancel it.
@@ -35,9 +48,22 @@ export function ReservationManageDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const update = useUpdateReservationStatus(branchId);
+  const saveDetails = useUpdateReservation(branchId);
   const qc = useQueryClient();
   const r = reservation;
   const phone = r?.phone ?? null;
+  const editable = r && (r.status === "RESERVED" || r.status === "CONFIRMED" || r.status === "ARRIVED");
+  const [customerName, setCustomerName] = useState("");
+  const [guestCount, setGuestCount] = useState("2");
+  const [reservedAt, setReservedAt] = useState("");
+  const [specialRequests, setSpecialRequests] = useState("");
+  useEffect(() => {
+    if (!r || !open) return;
+    setCustomerName(r.customerName);
+    setGuestCount(String(r.guestCount));
+    setReservedAt(toLocalInput(r.reservedAt));
+    setSpecialRequests(r.specialRequests ?? "");
+  }, [r, open]);
   const waHref =
     r && phone
       ? `https://wa.me/${phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
@@ -81,18 +107,82 @@ export function ReservationManageDialog({
               </span>
               {r.table && <span>· Table {r.table.name ?? r.table.number}</span>}
             </div>
-            <div className="rounded-lg bg-secondary/40 px-3 py-2">
-              <div className="font-medium text-foreground">{when(r.reservedAt)}</div>
-              {r.specialRequests && (
-                <p className="mt-1 text-xs text-muted-foreground">Request: {r.specialRequests}</p>
-              )}
-            </div>
+
+            {editable ? (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="res-name">Name</Label>
+                  <Input id="res-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="res-party">Party</Label>
+                    <Input
+                      id="res-party"
+                      type="number"
+                      min="1"
+                      value={guestCount}
+                      onChange={(e) => setGuestCount(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="res-time">Time</Label>
+                    <Input
+                      id="res-time"
+                      type="datetime-local"
+                      value={reservedAt}
+                      onChange={(e) => setReservedAt(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="res-notes">Notes</Label>
+                  <Input
+                    id="res-notes"
+                    value={specialRequests}
+                    onChange={(e) => setSpecialRequests(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saveDetails.isPending || !customerName.trim()}
+                  onClick={() =>
+                    saveDetails.mutate(
+                      {
+                        id: r.id,
+                        dto: {
+                          customerName: customerName.trim(),
+                          guestCount: Number(guestCount),
+                          reservedAt: new Date(reservedAt),
+                          specialRequests: specialRequests.trim() || null,
+                        },
+                      },
+                      {
+                        onSuccess: () => toast.success("Booking updated"),
+                        onError: (err) =>
+                          toast.error(err instanceof ApiError ? err.message : "Could not update"),
+                      },
+                    )
+                  }
+                >
+                  Save details
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-secondary/40 px-3 py-2">
+                <div className="font-medium text-foreground">{when(r.reservedAt)}</div>
+                {r.specialRequests && (
+                  <p className="mt-1 text-xs text-muted-foreground">Request: {r.specialRequests}</p>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Customer
               </div>
-              <span className="font-medium text-foreground">{r.customerName}</span>
+              {!editable && <span className="font-medium text-foreground">{r.customerName}</span>}
               {phone ? (
                 <>
                   <span className="flex items-center gap-2 text-muted-foreground">

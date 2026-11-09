@@ -28,10 +28,7 @@ export default function AttentionPage() {
         <Link href="/reports">Reports</Link>
         <Link href="/reports/floor">Floor</Link>
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold">Needs attention</h1>
-        <p className="text-sm text-muted-foreground">Open bills older than 45 minutes, delayed kitchen items, stock at the reorder level, and reservations in the next two hours.</p>
-      </div>
+      <p className="text-sm text-muted-foreground">Open bills older than 45 minutes, delayed kitchen items, stock at the reorder level, and reservations in the next two hours.</p>
       <div className="grid gap-4 lg:grid-cols-2">
         <Feed title="Open bills" empty="No old open bills" rows={(data?.oldOpenBills ?? []).map((row) => `#${row.orderNumber} since ${new Date(row.createdAt).toLocaleTimeString()}`)} />
         <Feed title="Kitchen delays" empty="Nothing delayed" rows={(data?.delayedItems ?? []).map((row) => `#${row.orderNumber}${row.reason ? ` · ${row.reason}` : ""}`)} />

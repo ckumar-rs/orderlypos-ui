@@ -2,7 +2,6 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { InventoryTabs } from "@/components/inventory/inventory-tabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
@@ -34,7 +33,6 @@ export default function AlertsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <InventoryTabs />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Alerts</h1>
