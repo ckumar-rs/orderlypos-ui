@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.10.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "author": "Raktim Ranjit <mail@raktimranjit.com> (https://github.com/Raktim94)",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -22,6 +24,7 @@
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.469.0",
     "motion": "^13.1.0",
     "next": "16.4.2",
@@ -40,6 +43,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20.19.43",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

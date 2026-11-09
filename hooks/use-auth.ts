@@ -1,14 +1,38 @@
 "use client";
 
-import { permissionSatisfied, type LoginDto, type RegisterDto, type SessionUser } from "@nodedr-restaurant/types";
+import {
+  permissionSatisfied,
+  type AuthProfile,
+  type ChangePasswordDto,
+  type LoginDto,
+  type RegisterDto,
+  type SessionUser,
+  type UpdateProfileDto,
+} from "@nodedr-restaurant/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
 export function useCurrentUser() {
   return useQuery({
     queryKey: ["auth", "me"],
-    queryFn: () => api.get<{ user: SessionUser }>("/auth/me"),
+    queryFn: () => api.get<{ user: AuthProfile }>("/auth/me"),
     retry: false,
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: UpdateProfileDto) => api.patch<{ user: AuthProfile }>("/auth/me", dto),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["auth", "me"], data);
+    },
+  });
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (dto: ChangePasswordDto) => api.post<{ ok: boolean }>("/auth/me/password", dto),
   });
 }
 
