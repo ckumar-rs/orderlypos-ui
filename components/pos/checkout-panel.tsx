@@ -5,7 +5,6 @@ import { ArrowLeft, CheckCircle2, ChefHat, Link2, Pencil, Printer } from "lucide
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { openNavHref } from "@/components/layout/nav-items";
 import { StatusNote, useNoteToast } from "@/components/ui/status-note";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1288,14 +1287,7 @@ export function CheckoutPanel({
               ) : (
                 <p className="text-center text-xs text-muted-foreground">
                   No UPI id set yet.{" "}
-                  <a
-                    href="/settings"
-                    className="font-medium underline"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      openNavHref("/settings", true);
-                    }}
-                  >
+                  <a href="/settings" className="font-medium underline">
                     Add your UPI id in Settings → Restaurant
                   </a>{" "}
                   to show a payment QR here.
