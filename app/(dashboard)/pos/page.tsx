@@ -12,16 +12,24 @@ import { clearDraft, switchTableDraft, type Drafts } from "@/lib/pos-drafts";
 import { CheckoutPanel } from "@/components/pos/checkout-panel";
 import { KitchenProgressWidget } from "@/components/pos/kitchen-progress-widget";
 import { ModifierPickerDialog } from "@/components/pos/modifier-picker-dialog";
-import { PosTablePicker } from "@/components/pos/pos-table-picker";
+import {
+  OrderlyPosShell,
+  type OrderlyPosTab,
+} from "@/components/pos/orderly-pos-shell";
+import { FloorBoard } from "@/components/pos/floor-board";
+import { PassBoard } from "@/components/pos/pass-board";
 import { ProductGrid } from "@/components/pos/product-grid";
+import { SalesBoard } from "@/components/pos/sales-board";
 import { Card } from "@/components/ui/card";
 import { useBranch } from "@/hooks/use-branch";
 import { useMenuItems, useSalesChannels, type MenuItem } from "@/hooks/use-menu";
+import { useSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   useAddOrderItems,
   useCreateOrder,
+  useOpenOrders,
   useOpenOrdersForTable,
   type CreatedOrder,
   type OpenOrder,
@@ -43,11 +51,21 @@ export default function PosPage() {
 
 function PosPageInner() {
   const { branchId, isLoading: branchLoading } = useBranch();
+  const { data: settings } = useSettings(branchId);
   const { note, clear: clearNote, toast } = useNoteToast();
   const floorsQuery = useFloors(branchId);
   const floors = floorsQuery.data;
   const tables = floors?.flatMap((f) => f.tables) ?? [];
   const preselectedTableId = useSearchParams().get("tableId") ?? "";
+  const [posTab, setPosTab] = useState<OrderlyPosTab>(
+    preselectedTableId ? "menu" : "floor",
+  );
+  const [passLateBadge, setPassLateBadge] = useState<string | undefined>();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const [lines, setLines] = useState<CartLine[]>([]);
   const [orderType, setOrderType] = useState<PosOrderType>("DINE_IN");
@@ -72,33 +90,85 @@ function PosPageInner() {
   const [seenPreselected, setSeenPreselected] = useState(preselectedTableId);
   if (preselectedTableId !== seenPreselected) {
     setSeenPreselected(preselectedTableId);
-    if (preselectedTableId && !activeOrder) setTableId(preselectedTableId);
+    if (preselectedTableId && !activeOrder) {
+      setTableId(preselectedTableId);
+      setPosTab("menu");
+    }
   }
   // Phones show the menu full-screen and the cart/checkout as an overlay; from
   // lg up both sit side by side and this flag is ignored.
   const [cartOpen, setCartOpen] = useState(false);
   const [hold, setHold] = useState(false);
-
-  // Mirror the cart to the customer-facing display (/customer-display).
-  useEffect(() => {
-    if (activeOrder) return;
-    publishDisplay(
-      lines.length === 0
-        ? { kind: "idle" }
-        : {
-            kind: "cart",
-            lines: lines.map((l) => ({
-              name: l.modifierLabel ? `${l.name} (${l.modifierLabel})` : l.name,
-              quantity: l.quantity,
-              total: l.unitPrice * l.quantity,
-            })),
-            subtotal: lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0),
-          },
-    );
-  }, [lines, activeOrder]);
+  const [guestCount, setGuestCount] = useState(2);
 
   const createOrder = useCreateOrder(branchId);
   const addOrderItems = useAddOrderItems(branchId);
+  const liveOpenOrders = useOpenOrders(branchId);
+  useEffect(() => {
+    if (posTab !== "sales" || activeOrder) return;
+    const first = liveOpenOrders.data?.[0];
+    if (!first) return;
+    setActiveCustomer(first.customer);
+    setActiveOrder(first);
+  }, [posTab, activeOrder, liveOpenOrders.data]);
+
+  // Mirror cart / open bill to /customer-display. Prefer unsent draft lines;
+  // otherwise show the active bill. Checkout still owns UPI + paid (higher
+  // priority in publishDisplay) so open-order polling cannot wipe the QR.
+  useEffect(() => {
+    if (lines.length > 0) {
+      publishDisplay(
+        {
+          kind: "cart",
+          lines: lines.map((l) => ({
+            name: l.modifierLabel ? `${l.name} (${l.modifierLabel})` : l.name,
+            quantity: l.quantity,
+            total: l.unitPrice * l.quantity,
+          })),
+          subtotal: lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0),
+        },
+        "pos",
+      );
+      return;
+    }
+
+    if (activeOrder) {
+      const bill = (liveOpenOrders.data ?? []).find((b) => b.id === activeOrder.id);
+      const items = bill?.items ?? [];
+      if (items.length > 0) {
+        publishDisplay(
+          {
+            kind: "cart",
+            lines: items.map((item) => ({
+              name: item.nameSnapshot,
+              quantity: item.quantity,
+              total: Number(item.lineTotal),
+            })),
+            subtotal: Number(bill?.totalAmount ?? activeOrder.totalAmount),
+          },
+          "pos",
+        );
+        return;
+      }
+      publishDisplay(
+        {
+          kind: "cart",
+          lines: [
+            {
+              name: `Order #${activeOrder.orderNumber}`,
+              quantity: 1,
+              total: Number(activeOrder.totalAmount),
+            },
+          ],
+          subtotal: Number(activeOrder.totalAmount),
+        },
+        "pos",
+      );
+      return;
+    }
+
+    publishDisplay({ kind: "idle" }, "pos");
+  }, [lines, activeOrder, liveOpenOrders.data]);
   const openBillsQuery = useOpenOrdersForTable(
     branchId,
     orderType === "DINE_IN" ? tableId || null : null,
@@ -217,6 +287,16 @@ function PosPageInner() {
 
   const handleSelect = (item: MenuItem) => {
     const priced = priceForChannel(item);
+    const guestAllergies = activeCustomer?.allergies?.trim();
+    if (guestAllergies && (priced.allergens?.length ?? 0) > 0) {
+      const guest = guestAllergies.toLowerCase();
+      const clash = priced.allergens!.filter((tag) => guest.includes(tag.toLowerCase()) || tag.toLowerCase().includes(guest));
+      if (clash.length > 0) {
+        toast.warning(`Allergy note: guest has “${guestAllergies}”; this dish lists ${clash.join(", ")}`);
+      }
+      } else if (guestAllergies) {
+      toast.info(`Guest allergies on file: ${guestAllergies}`);
+    }
     if (priced.soldByWeight) {
       setWeightItem(priced);
       setWeightText("");
@@ -353,6 +433,7 @@ function PosPageInner() {
             setDrafts((d) => clearDraft(d, sentTableId));
             setActiveCustomer(existingOrder.customer);
             setActiveOrder(order);
+            setPosTab("sales");
             toast.success(`Added to order #${order.orderNumber} — sent to kitchen`);
           },
           onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not add items"),
@@ -365,6 +446,7 @@ function PosPageInner() {
     const dto = {
         type: orderType,
         tableId: orderType === "DINE_IN" ? tableId : undefined,
+        ...(orderType === "DINE_IN" && guestCount > 0 ? { guestCount } : {}),
         ...(orderType === "DELIVERY" ? { delivery } : {}),
         ...(orderType !== "DINE_IN" && scheduledFor
           ? { scheduledFor: new Date(scheduledFor).toISOString() }
@@ -383,6 +465,7 @@ function PosPageInner() {
           setActiveOrder(order);
           setCartOpen(true);
           setHold(false);
+          setPosTab("sales");
           toast.success(
             hold
               ? `Order #${order.orderNumber} is on hold. Resume it at checkout to send the kitchen ticket.`
@@ -411,225 +494,384 @@ function PosPageInner() {
       setActiveCustomer(existingOrder.customer);
       setActiveOrder(existingOrder);
       setCartOpen(true);
+      setPosTab("sales");
     }
   };
 
   const resetForNewOrder = () => {
-    setActiveOrder(null);
+    const nextBill = (liveOpenOrders.data ?? []).find((b) => b.id !== activeOrder?.id);
     setCartOpen(false);
     // The sent cart is gone; other tables' unsent drafts stay.
     setLines([]);
     setSelectedBillId(null);
     setTableIdRaw("");
-    setActiveCustomer(null);
     setDelivery({ address: "", pincode: "", phone: "" });
     setScheduledFor("");
+    if (nextBill) {
+      setActiveCustomer(nextBill.customer);
+      setActiveOrder(nextBill);
+      setPosTab("sales");
+      return;
+    }
+    setActiveOrder(null);
+    setActiveCustomer(null);
+    setPosTab("sales");
   };
 
-  const handleTablePick = (table: RestaurantTable) => setTableId(table.id);
+  const handleTablePick = (table: RestaurantTable) => {
+    setTableId(table.id);
+    const open = (liveOpenOrders.data ?? []).find((b) => b.tableId === table.id);
+    if (open?.guestCount && open.guestCount > 0) setGuestCount(open.guestCount);
+    else if (table.capacity > 0) setGuestCount(table.capacity);
+    setPosTab("menu");
+  };
 
-  // Click-to-order: for a fresh dine-in ticket, land on a visual table grid
-  // first — the rest of the flow (menu, cart, bill-or-add-more) is
-  // unchanged once a table's picked. Takeaway orders and orders already
-  // mid-flow (tableId set, or viewing/paying an order) skip straight past
-  // it, same as arriving here from the Tables page's own "New order" link
-  // (?tableId=... pre-fills this and never shows the picker).
-  const showTablePicker = orderType === "DINE_IN" && !tableId && !activeOrder;
+  const occupiedCount = tables.filter((t) => t.status === "OCCUPIED").length;
+  const restaurantName =
+    settings?.restaurant.name || settings?.branch.name || "Orderly";
+  const dateLabel = now.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const clock = now.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const hour = now.getHours();
+  const shiftLabel =
+    hour >= 11 && hour < 16
+      ? "Lunch service"
+      : hour >= 16 && hour < 23
+        ? "Dinner service"
+        : "Off-peak";
+  const cartBadge =
+    lines.length > 0
+      ? String(lines.reduce((n, l) => n + l.quantity, 0))
+      : undefined;
+  const selectedTable = tables.find((t) => t.id === tableId);
+
+  const cartPanel = (
+    <CartPanel
+      lines={lines}
+      orderType={orderType}
+      onOrderTypeChange={setOrderType}
+      tables={tables}
+      tableId={tableId}
+      onTableChange={setTableId}
+      onIncrement={(key) => updateQuantity(key, 1)}
+      onDecrement={(key) => updateQuantity(key, -1)}
+      onRemove={removeLine}
+      onNote={setLineNote}
+      onPatch={patchLine}
+      hold={hold}
+      onHoldChange={setHold}
+      onSubmit={handleSubmit}
+      isSubmitting={createOrder.isPending || addOrderItems.isPending}
+      existingOrderNumber={existingOrder?.orderNumber}
+      onViewExistingOrder={existingOrder ? viewExistingOrder : undefined}
+      openBills={existingOrders?.map((o) => ({ id: o.id, orderNumber: o.orderNumber }))}
+      selectedBillId={existingOrder?.id ?? null}
+      onSelectBill={setSelectedBillId}
+      checkingTable={checkingTable}
+      delivery={delivery}
+      onDeliveryChange={setDelivery}
+      scheduledFor={scheduledFor}
+      onScheduledForChange={setScheduledFor}
+      guestCount={guestCount}
+      onGuestCountChange={setGuestCount}
+    />
+  );
+
+  const menuPanel = (
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-3 sm:p-4">
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submitScan();
+        }}
+      >
+        <Input
+          value={scanCode}
+          onChange={(e) => setScanCode(e.target.value)}
+          placeholder="Scan a barcode or type a SKU"
+          aria-label="Scan a barcode or type a SKU"
+          autoComplete="off"
+          className="bg-card"
+        />
+        <Button type="submit" variant="outline">
+          Add
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setScannerOpen(true)}>
+          <Camera className="h-4 w-4" />
+          {scannerOpen ? "Looking…" : "Camera"}
+        </Button>
+      </form>
+      <BarcodeScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        onDetected={(code) => {
+          setScanCode(code);
+          findByBarcode(code);
+        }}
+        onTimeout={() => toast.error("No barcode found. Type the code instead.")}
+        onUnavailable={() => toast.error("Camera did not open. Use the scan box.")}
+      />
+      {weightItem && (
+        <form
+          className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addWeight(Number(weightText));
+          }}
+        >
+          <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+            {weightItem.name} weight in kg. The price is per kilogram.
+            <Input
+              inputMode="decimal"
+              value={weightText}
+              onChange={(e) => setWeightText(e.target.value)}
+              aria-label="Weight in kilograms"
+              autoFocus
+              className="bg-secondary"
+            />
+          </label>
+          <Button type="button" variant="outline" onClick={() => void readScale()}>
+            Read scale
+          </Button>
+          <Button type="submit">Add weight</Button>
+        </form>
+      )}
+      {channels.length > 0 && (
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Price list</span>
+          <select
+            aria-label="Price list"
+            value={salesChannelId}
+            onChange={(e) => setSalesChannelId(e.target.value)}
+            className="rounded-lg border border-border bg-card px-2 py-2 text-sm"
+          >
+            <option value="">Base prices</option>
+            {channels.map((channel) => (
+              <option key={channel.id} value={channel.id}>
+                {channel.name}
+                {Number(channel.markupPercent) ? ` (${channel.markupPercent}%)` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ProductGrid
+          branchId={branchId}
+          onSelect={(item) => {
+            handleSelect(item);
+            setCartOpen(true);
+          }}
+        />
+      </div>
+    </div>
+  );
 
   return (
-    <div className="flex h-[calc(100dvh-10rem)] flex-col gap-4 lg:h-[calc(100dvh-8rem)]">
-      <StatusNote note={note} onClear={clearNote} />
-      {deviceMessage ? (
-        <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground">{deviceMessage}</p>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <KitchenProgressWidget branchId={branchId} />
-        </div>
-        <a
-          href="/customer-display"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          title="Opens the customer-facing screen in a new window — drag it to the second monitor"
-        >
-          <MonitorSmartphone className="h-3.5 w-3.5" />
-          Customer display
-        </a>
-      </div>
-
-      <BranchNotice />
-
-      {showTablePicker ? (
-        <Card className="flex-1 overflow-hidden p-5">
-          <PosTablePicker
-            floors={floors ?? []}
-            onSelect={handleTablePick}
-            isLoading={floorsQuery.isLoading || branchLoading}
-            error={floorsQuery.isError ? floorsQuery.error : null}
-            onRetry={() => void floorsQuery.refetch()}
-            retrying={floorsQuery.isFetching}
-          />
-        </Card>
-      ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 overflow-hidden lg:grid-cols-[1fr_360px]">
-          <Card className="min-h-0 overflow-hidden p-3 sm:p-5">
-            <form
-              className="mb-3 flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                submitScan();
-              }}
-            >
-              <Input
-                value={scanCode}
-                onChange={(e) => setScanCode(e.target.value)}
-                placeholder="Scan a barcode or type a SKU"
-                aria-label="Scan a barcode or type a SKU"
-                autoComplete="off"
-              />
-              <Button type="submit" variant="outline">Add</Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setScannerOpen(true)}
+    <OrderlyPosShell
+      restaurantName={restaurantName}
+      dateLabel={dateLabel}
+      shiftLabel={shiftLabel}
+      openTablesLabel={`${occupiedCount}/${tables.length || 0}`}
+      clock={clock}
+      tab={posTab}
+      onTabChange={(next) => {
+        setPosTab(next);
+        if (next === "menu" || next === "sales") setCartOpen(true);
+      }}
+      badges={{
+        pass: passLateBadge,
+        menu: cartBadge,
+        sales:
+          (liveOpenOrders.data?.length ?? 0) > 0
+            ? String(liveOpenOrders.data!.length)
+            : activeOrder
+              ? "Pay"
+              : undefined,
+      }}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        {posTab !== "pass" ? (
+          <div className="shrink-0 space-y-2 border-b border-border px-3 py-2 sm:px-4">
+            <StatusNote note={note} onClear={clearNote} />
+            {deviceMessage ? (
+              <p className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground">
+                {deviceMessage}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <KitchenProgressWidget branchId={branchId} />
+              </div>
+              <a
+                href="/customer-display"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                title="Opens the customer-facing screen in a new window — drag it to the second monitor"
               >
-                <Camera className="h-4 w-4" />
-                {scannerOpen ? "Looking…" : "Camera"}
-              </Button>
-            </form>
-            <BarcodeScannerDialog
-              open={scannerOpen}
-              onOpenChange={setScannerOpen}
-              onDetected={(code) => {
-                setScanCode(code);
-                findByBarcode(code);
-              }}
-              onTimeout={() => toast.error("No barcode found. Type the code instead.")}
-              onUnavailable={() => toast.error("Camera did not open. Use the scan box.")}
+                <MonitorSmartphone className="h-3.5 w-3.5" />
+                Customer display
+              </a>
+            </div>
+            <BranchNotice />
+          </div>
+        ) : (
+          <div className="shrink-0 border-b border-border px-3 py-2 sm:px-4">
+            <StatusNote note={note} onClear={clearNote} />
+            <BranchNotice />
+          </div>
+        )}
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {posTab === "floor" && (
+            <FloorBoard
+              floors={floors ?? []}
+              openBills={liveOpenOrders.data ?? []}
+              selectedTableId={tableId || undefined}
+              onSelect={handleTablePick}
+              isLoading={floorsQuery.isLoading || branchLoading}
+              error={floorsQuery.isError ? floorsQuery.error : null}
+              onRetry={() => void floorsQuery.refetch()}
+              retrying={floorsQuery.isFetching}
             />
-            {weightItem && (
-              <form
-                className="mb-3 flex flex-wrap items-end gap-2 rounded-lg border border-border p-3"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  addWeight(Number(weightText));
-                }}
-              >
-                <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
-                  {weightItem.name} weight in kg. The price is per kilogram.
-                  <Input
-                    inputMode="decimal"
-                    value={weightText}
-                    onChange={(e) => setWeightText(e.target.value)}
-                    aria-label="Weight in kilograms"
-                    autoFocus
-                  />
-                </label>
-                <Button type="button" variant="outline" onClick={() => void readScale()}>Read scale</Button>
-                <Button type="submit">Add weight</Button>
-              </form>
-            )}
-            {channels.length > 0 && (
-              <label className="mb-3 flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Price list</span>
-                <select
-                  aria-label="Price list"
-                  value={salesChannelId}
-                  onChange={(e) => setSalesChannelId(e.target.value)}
-                  className="rounded-lg border border-border bg-background px-2 py-2 text-sm"
-                >
-                  <option value="">Base prices</option>
-                  {channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.name}
-                      {Number(channel.markupPercent) ? ` (${channel.markupPercent}%)` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <ProductGrid branchId={branchId} onSelect={handleSelect} />
-          </Card>
+          )}
 
-          <Card
-            className={cn(
-              "min-h-0 overflow-hidden p-5",
-              cartOpen
-                ? "max-lg:fixed max-lg:inset-0 max-lg:z-40 max-lg:rounded-none max-lg:p-4 max-lg:pt-[max(1rem,env(safe-area-inset-top))] max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]"
-                : "max-lg:hidden",
-            )}
-          >
+          {posTab === "menu" && (
+            <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_360px]">
+              <div className="flex min-h-0 flex-col overflow-hidden">
+                {selectedTable || orderType !== "DINE_IN" ? (
+                  <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-secondary/40 px-3 py-2 text-xs sm:px-4">
+                    <p className="min-w-0 truncate text-muted-foreground">
+                      {orderType === "DINE_IN" && selectedTable ? (
+                        <>
+                          <span className="font-semibold text-foreground">
+                            {selectedTable.name ?? `Table ${selectedTable.number}`}
+                          </span>
+                          {" · "}
+                          {guestCount || selectedTable.capacity} covers
+                          {existingOrder
+                            ? ` · bill #${existingOrder.orderNumber}`
+                            : " · new bill"}
+                        </>
+                      ) : (
+                        <span className="font-semibold text-foreground">{orderType.replace(/_/g, " ")}</span>
+                      )}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => setPosTab("floor")}
+                    >
+                      Change table
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="min-h-0 flex-1 overflow-hidden">{menuPanel}</div>
+              </div>
+              <Card
+                className={cn(
+                  "min-h-0 overflow-hidden border-border bg-card p-4",
+                  cartOpen
+                    ? "max-lg:fixed max-lg:inset-0 max-lg:z-40 max-lg:rounded-none"
+                    : "max-lg:hidden",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => setCartOpen(false)}
+                  className="mb-3 -ml-1 flex items-center gap-1 text-sm font-medium text-muted-foreground lg:hidden"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Back to menu
+                </button>
+                {cartPanel}
+              </Card>
+            </div>
+          )}
+
+          {posTab === "pass" && (
+            <PassBoard
+              branchId={branchId}
+              enabled={posTab === "pass"}
+              onLateCount={(count) =>
+                setPassLateBadge(count > 0 ? `${count} late` : undefined)
+              }
+            />
+          )}
+
+          {posTab === "sales" && (
+            <SalesBoard
+              restaurantName={restaurantName}
+              bills={liveOpenOrders.data ?? []}
+              activeOrder={activeOrder}
+              onSelectBill={(bill) => {
+                setActiveCustomer(bill.customer);
+                setActiveOrder(bill);
+              }}
+              checkout={
+                activeOrder ? (
+                  <CheckoutPanel
+                    order={activeOrder}
+                    branchId={branchId}
+                    initialCustomer={activeCustomer}
+                    onDone={resetForNewOrder}
+                  />
+                ) : null
+              }
+              emptyActions={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" onClick={() => setPosTab("menu")}>
+                    Open menu
+                  </Button>
+                  <Button variant="outline" onClick={() => setPosTab("pass")}>
+                    Open pass
+                  </Button>
+                  {existingOrder ? (
+                    <Button onClick={viewExistingOrder}>
+                      Open bill #{existingOrder.orderNumber}
+                    </Button>
+                  ) : null}
+                </div>
+              }
+            />
+          )}
+        </div>
+
+        {posTab === "menu" &&
+          !cartOpen &&
+          (lines.length > 0 || activeOrder || existingOrder) && (
             <button
               type="button"
-              onClick={() => setCartOpen(false)}
-              className="mb-3 -ml-1 flex items-center gap-1 text-sm font-medium text-muted-foreground lg:hidden"
+              onClick={() => setCartOpen(true)}
+              className="fixed inset-x-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 flex h-14 items-center justify-between rounded-2xl bg-primary px-4 text-primary-foreground shadow-lg active:scale-[0.98] lg:hidden"
             >
-              <ChevronLeft className="h-4 w-4" />
-              Back to menu
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <ShoppingCart className="h-5 w-5" />
+                {activeOrder
+                  ? `Order #${activeOrder.orderNumber} — pay`
+                  : lines.length > 0
+                    ? `View cart · ${lines.reduce((n, l) => n + l.quantity, 0)} items`
+                    : `Open bill #${existingOrder?.orderNumber} — view`}
+              </span>
+              {!activeOrder && lines.length > 0 && (
+                <span className="font-mono text-sm font-semibold tabular-nums">
+                  {formatCurrency(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))}
+                </span>
+              )}
             </button>
-            {activeOrder ? (
-              <CheckoutPanel
-                order={activeOrder}
-                branchId={branchId}
-                initialCustomer={activeCustomer}
-                onDone={resetForNewOrder}
-              />
-            ) : (
-              <CartPanel
-                lines={lines}
-                orderType={orderType}
-                onOrderTypeChange={setOrderType}
-                tables={tables}
-                tableId={tableId}
-                onTableChange={setTableId}
-                onIncrement={(key) => updateQuantity(key, 1)}
-                onDecrement={(key) => updateQuantity(key, -1)}
-                onRemove={removeLine}
-                onNote={setLineNote}
-                onPatch={patchLine}
-                hold={hold}
-                onHoldChange={setHold}
-                onSubmit={handleSubmit}
-                isSubmitting={createOrder.isPending || addOrderItems.isPending}
-                existingOrderNumber={existingOrder?.orderNumber}
-                onViewExistingOrder={existingOrder ? viewExistingOrder : undefined}
-                openBills={existingOrders?.map((o) => ({ id: o.id, orderNumber: o.orderNumber }))}
-                selectedBillId={existingOrder?.id ?? null}
-                onSelectBill={setSelectedBillId}
-                checkingTable={checkingTable}
-                delivery={delivery}
-                onDeliveryChange={setDelivery}
-                scheduledFor={scheduledFor}
-                onScheduledForChange={setScheduledFor}
-              />
-            )}
-          </Card>
-        </div>
-      )}
-
-      {!showTablePicker && !cartOpen && (lines.length > 0 || activeOrder || existingOrder) && (
-        <button
-          type="button"
-          onClick={() => setCartOpen(true)}
-          className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex h-14 items-center justify-between rounded-2xl bg-primary px-4 text-primary-foreground shadow-lg active:scale-[0.98] lg:hidden"
-          style={{ backgroundImage: "var(--gradient-primary)" }}
-        >
-          <span className="flex items-center gap-2 text-sm font-semibold">
-            <ShoppingCart className="h-5 w-5" />
-            {activeOrder
-              ? `Order #${activeOrder.orderNumber} — pay`
-              : lines.length > 0
-                ? `View cart · ${lines.reduce((n, l) => n + l.quantity, 0)} items`
-                : `Open bill #${existingOrder?.orderNumber} — view`}
-          </span>
-          {!activeOrder && lines.length > 0 && (
-            <span className="text-sm font-semibold tabular-nums">
-              {formatCurrency(lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0))}
-            </span>
           )}
-        </button>
-      )}
+      </div>
 
       <ModifierPickerDialog
         item={pickerItem}
@@ -638,6 +880,6 @@ function PosPageInner() {
         onConfirm={handleModifierConfirm}
         allowCustom
       />
-    </div>
+    </OrderlyPosShell>
   );
 }

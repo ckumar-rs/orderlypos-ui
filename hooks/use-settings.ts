@@ -46,6 +46,11 @@ export interface RestaurantSettings {
   payCard?: boolean;
   payUpi?: boolean;
   payOther?: boolean;
+  preferredPaymentMethod?: "UPI" | "CASH" | "CARD" | "OTHER" | null;
+  paymentMethodOrder?: Array<"UPI" | "CASH" | "CARD" | "OTHER">;
+  cashLabel?: string;
+  billPayLinkEnabled?: boolean;
+  billPayLinkWhatsappMessage?: string;
   receiptWhatsApp?: boolean;
   receiptEmailEnabled?: boolean;
   receiptPrint?: boolean;
@@ -57,6 +62,10 @@ export interface RestaurantSettings {
   waCloudTemplateName?: string | null;
   waCloudTemplateLang?: string | null;
   waCloudTokenConfigured?: boolean;
+  bulkWaEnabled?: boolean;
+  bulkWaBaseUrl?: string | null;
+  bulkWaApiKeyConfigured?: boolean;
+  bulkWaWebhookSecretConfigured?: boolean;
   smsEnabled?: boolean;
   smsProvider?: string | null;
   smsBaseUrl?: string | null;
@@ -95,6 +104,29 @@ export interface BranchSettings {
   kioskToken: string | null;
   kioskDineInEnabled: boolean;
   kioskTakeawayEnabled: boolean;
+  pickupDisplayToken?: string | null;
+  payBeforeKitchenKiosk?: boolean;
+  payBeforeKitchenTakeaway?: boolean;
+  guestPaidClaimEnabled?: boolean;
+  guestCodRequestEnabled?: boolean;
+  guestWaiterEnabled?: boolean;
+  guestBillEnabled?: boolean;
+  deliveryTrackingRadiusKm?: number;
+  deliveryTrackingStaleMinutes?: number;
+  deliveryTrackingLat?: number | null;
+  deliveryTrackingLng?: number | null;
+  leaveAnnualDays?: number;
+  leaveSickDays?: number;
+  payrollStatutoryEnabled?: boolean;
+  payrollPfRate?: number;
+  payrollPfWageCeiling?: number;
+  payrollEsiGrossLimit?: number;
+  payrollEsiEmployeeRate?: number;
+  payrollEsiEmployerRate?: number;
+  expenseCategories?: string[];
+  expenseRequireApproval?: boolean;
+  cashVarianceWarnAmount?: number;
+  pettyCashInTillClose?: boolean;
   printerPaperWidthMm: 58 | 80;
   printerCodepage: "CP437" | "CP850" | "CP858" | "CP1252";
   printerColumns: number | null;
@@ -143,5 +175,95 @@ export function useSetKiosk(branchId: string | null) {
     mutationFn: (action: "enable" | "rotate" | "disable") =>
       api.post<{ kioskToken: string | null }>(`/settings/kiosk/${action}?branchId=${branchId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", branchId] }),
+  });
+}
+
+export function useSetPickupBoard(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (action: "enable" | "rotate" | "disable") =>
+      api.post<{ pickupDisplayToken: string | null }>(
+        `/settings/pickup/${action}?branchId=${branchId}`,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["settings", branchId] }),
+  });
+}
+
+export function useSendTestEmail() {
+  return useMutation({
+    mutationFn: (to: string) =>
+      api.post<{ ok: true; provider: string; from: string }>("/settings/email/test", { to }),
+  });
+}
+
+export type OnboardingStep =
+  | "business"
+  | "branch"
+  | "floor"
+  | "menu"
+  | "guests"
+  | "done";
+
+export type OnboardingConfig = {
+  labelBusiness: string;
+  labelBranch: string;
+  labelFloor: string;
+  labelMenu: string;
+  labelGuests: string;
+  bodyBusiness: string;
+  bodyBranch: string;
+  bodyFloor: string;
+  bodyMenu: string;
+  bodyGuests: string;
+  defaultFloorName: string;
+  defaultTableCount: string;
+  defaultTableCapacity: string;
+  defaultCategoryName: string;
+  defaultDishName: string;
+  defaultDishPrice: string;
+  defaultDishTaxPercent: string;
+};
+
+export type OnboardingStatus = {
+  enabled: boolean;
+  completed: boolean;
+  skipped: boolean;
+  step: OnboardingStep;
+  needsWizard: boolean;
+  checks: {
+    business: boolean;
+    branch: boolean;
+    floor: boolean;
+    menu: boolean;
+    guests: boolean;
+    upiOptional: boolean;
+  };
+  config: OnboardingConfig;
+  counts: { floors: number; tables: number; menuItems: number };
+};
+
+export function useOnboarding(branchId: string | null) {
+  return useQuery({
+    queryKey: ["settings", "onboarding", branchId],
+    queryFn: () =>
+      api.get<OnboardingStatus>(`/settings/onboarding?branchId=${branchId}`),
+    enabled: !!branchId,
+    staleTime: 15_000,
+  });
+}
+
+export function usePatchOnboarding(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: {
+      action: "advance" | "complete" | "skip" | "reopen" | "set_enabled" | "set_config";
+      step?: OnboardingStep;
+      enabled?: boolean;
+      config?: Partial<OnboardingConfig>;
+    }) => api.patch<OnboardingStatus>(`/settings/onboarding?branchId=${branchId}`, dto),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "onboarding", branchId] });
+      queryClient.invalidateQueries({ queryKey: ["settings", branchId] });
+    },
   });
 }

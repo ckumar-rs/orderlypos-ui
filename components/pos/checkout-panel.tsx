@@ -1,11 +1,11 @@
 "use client";
 
-import { kitchenProgress, type PaymentMethodDto } from "@nodedr-restaurant/types";
-import { ArrowLeft, CheckCircle2, ChefHat, Pencil, Printer } from "lucide-react";
+import { kitchenProgress, paymentMethodLabel, type PaymentMethodDto } from "@nodedr-restaurant/types";
+import { ArrowLeft, CheckCircle2, ChefHat, Link2, Pencil, Printer } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import Link from "next/link";
+import { openNavHref } from "@/components/layout/nav-items";
 import { StatusNote, useNoteToast } from "@/components/ui/status-note";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,16 +48,35 @@ function enabledMethods(restaurant?: {
   payCard?: boolean;
   payUpi?: boolean;
   payOther?: boolean;
+  paymentMethodOrder?: string[];
+  preferredPaymentMethod?: string | null;
 }): PaymentMethodDto[] {
   if (!restaurant) return [];
-  return (
-    [
-      restaurant.payCash ? "CASH" : null,
-      restaurant.payCard ? "CARD" : null,
-      restaurant.payUpi ? "UPI" : null,
-      restaurant.payOther ? "OTHER" : null,
-    ] as (PaymentMethodDto | null)[]
-  ).filter((method): method is PaymentMethodDto => method != null);
+  const enabled = new Set<PaymentMethodDto>(
+    (
+      [
+        restaurant.payUpi ? "UPI" : null,
+        restaurant.payCash ? "CASH" : null,
+        restaurant.payCard ? "CARD" : null,
+        restaurant.payOther ? "OTHER" : null,
+      ] as (PaymentMethodDto | null)[]
+    ).filter((method): method is PaymentMethodDto => method != null),
+  );
+  const order = (restaurant.paymentMethodOrder ?? []).filter((method): method is PaymentMethodDto =>
+    enabled.has(method as PaymentMethodDto),
+  );
+  const rest = [...enabled].filter((method) => !order.includes(method));
+  return [...order, ...rest];
+}
+
+function preferredMethod(
+  methods: PaymentMethodDto[],
+  preferred?: string | null,
+): PaymentMethodDto {
+  if (preferred && methods.includes(preferred as PaymentMethodDto)) {
+    return preferred as PaymentMethodDto;
+  }
+  return methods[0] ?? "UPI";
 }
 
 interface SplitLine {
@@ -170,10 +189,11 @@ export function CheckoutPanel({
   const [splitCount, setSplitCount] = useState("1");
   const [splitOn, setSplitOn] = useState(false);
   const [splitLines, setSplitLines] = useState<SplitLine[]>([
-    { id: "cash", method: "CASH", amount: "", reference: "" },
     { id: "upi", method: "UPI", amount: "", reference: "" },
+    { id: "cash", method: "CASH", amount: "", reference: "" },
   ]);
   const [upiReference, setUpiReference] = useState("");
+  const [payLinkBusy, setPayLinkBusy] = useState(false);
   const [receiptPhone, setReceiptPhone] = useState(initialCustomer?.phone ?? "");
   const sendDigitalReceipt = useMutation({
     mutationFn: ({
@@ -237,11 +257,13 @@ export function CheckoutPanel({
   });
   const { data: openBills } = useOpenOrders(branchId);
   const payMethods = enabledMethods(settings?.restaurant);
+  const cashLabel = settings?.restaurant.cashLabel?.trim() || "Cash";
   useEffect(() => {
-    if (payMethods.length && !payMethods.includes(method)) {
-      setMethod(payMethods[0]);
+    if (!payMethods.length) return;
+    if (!payMethods.includes(method)) {
+      setMethod(preferredMethod(payMethods, settings?.restaurant.preferredPaymentMethod));
     }
-  }, [payMethods, method]);
+  }, [payMethods, method, settings?.restaurant.preferredPaymentMethod]);
   const phoneSeeded = useRef(Boolean(initialCustomer?.phone));
   useEffect(() => {
     if (phoneSeeded.current) return;
@@ -345,6 +367,42 @@ export function CheckoutPanel({
       : remainingDue;
   const upiVpa = settings?.restaurant.upiVpa || null;
   const upiName = settings?.restaurant.upiPayeeName || settings?.restaurant.name;
+
+  const sharePayLink = async (mode: "copy" | "whatsapp") => {
+    if (!branchId || !order?.id) return;
+    setPayLinkBusy(true);
+    try {
+      const row = await api.post<{
+        path: string;
+        orderNumber: string;
+        whatsappMessageTemplate: string;
+      }>(`/orders/${order.id}/pay-link?branchId=${branchId}`);
+      const url = `${window.location.origin}${row.path}`;
+      const template =
+        row.whatsappMessageTemplate ||
+        settings?.restaurant.billPayLinkWhatsappMessage ||
+        "Here is your bill for order {order}: {url}";
+      const text = template
+        .replaceAll("{url}", url)
+        .replaceAll("{order}", row.orderNumber);
+      if (mode === "copy") {
+        await navigator.clipboard.writeText(url);
+        toast.success("Pay link copied");
+      } else {
+        window.open(
+          `https://wa.me/?text=${encodeURIComponent(text)}`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Could not create pay link",
+      );
+    } finally {
+      setPayLinkBusy(false);
+    }
+  };
   const demoUpi = false;
   const showUpiQr = remainingDue > 0 && upiAmount > 0 && (splitOn || method === "UPI");
   const upiUri =
@@ -358,14 +416,59 @@ export function CheckoutPanel({
           ref: order.id,
         });
 
-  // Mirror the QR to the customer-facing screen while UPI is selected, and
-  // clear it again if the cashier switches method.
+  // Own the customer display while this bill is open: cart lines, UPI QR, or
+  // (on success) the paid thank-you. Leaving UPI restores the cart — the old
+  // effect only published the QR and never put the bill back.
   useEffect(() => {
     if (completed) return;
     if (upiUri) {
-      publishDisplay({ kind: "upi", total: upiAmount, uri: upiUri, payee: upiName || "" });
+      publishDisplay(
+        { kind: "upi", total: upiAmount, uri: upiUri, payee: upiName || "" },
+        "checkout",
+      );
+      return;
     }
-  }, [upiUri, upiAmount, upiName, completed]);
+    const items = live?.items ?? [];
+    if (items.length > 0) {
+      publishDisplay(
+        {
+          kind: "cart",
+          lines: items.map((item) => ({
+            name: item.nameSnapshot,
+            quantity: item.quantity,
+            total: Number(item.lineTotal),
+          })),
+          subtotal: Number(live?.totalAmount ?? order.totalAmount),
+        },
+        "checkout",
+      );
+      return;
+    }
+    publishDisplay(
+      {
+        kind: "cart",
+        lines: [
+          {
+            name: `Order #${order.orderNumber}`,
+            quantity: 1,
+            total: Number(order.totalAmount),
+          },
+        ],
+        subtotal: Number(order.totalAmount),
+      },
+      "checkout",
+    );
+  }, [
+    upiUri,
+    upiAmount,
+    upiName,
+    completed,
+    live?.items,
+    live?.totalAmount,
+    order.id,
+    order.orderNumber,
+    order.totalAmount,
+  ]);
 
   // One id per distinct attempt: a retry after a dropped connection (same
   // payload) reuses it, so the server records the payment once.
@@ -416,7 +519,10 @@ export function CheckoutPanel({
           setAmountText("");
           if (result.settlement.fullyPaid) {
             setCompleted(result);
-            publishDisplay({ kind: "paid", total: Number(result.totalAmount), method });
+            publishDisplay(
+              { kind: "paid", total: Number(result.totalAmount), method },
+              "checkout",
+            );
             playPaymentReceived(formatCurrency(result.totalAmount));
             toast.success("Payment recorded");
           } else {
@@ -528,6 +634,7 @@ export function CheckoutPanel({
       method: payment.method,
       amount: formatCurrency(payment.amount),
     })),
+    cashLabel,
   });
 
   if (completed) {
@@ -784,7 +891,7 @@ export function CheckoutPanel({
           <ul className="mt-1 flex flex-col gap-0.5 text-sm">
             {paidSoFar.map((p) => (
               <li key={p.id} className="flex justify-between tabular-nums">
-                <span>{p.method}</span>
+                <span>{paymentMethodLabel(p.method, cashLabel)}</span>
                 <span>{formatCurrency(p.amount)}</span>
               </li>
             ))}
@@ -1021,7 +1128,12 @@ export function CheckoutPanel({
               {payMethods.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Turn on a payment method in Settings.</p>
               ) : (
-                <PaymentMethodButtons methods={payMethods} value={method} onChange={setMethod} />
+                <PaymentMethodButtons
+                  methods={payMethods}
+                  value={method}
+                  onChange={setMethod}
+                  cashLabel={cashLabel}
+                />
               )}
             </div>
           )}
@@ -1045,7 +1157,7 @@ export function CheckoutPanel({
 
           {remainingDue > 0 && !splitOn && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="amount">{method === "CASH" ? "Cash received" : "Amount to pay now"}{payCurrency ? ` (${payCurrency})` : ""}</Label>
+              <Label htmlFor="amount">{method === "CASH" ? `${cashLabel} received` : "Amount to pay now"}{payCurrency ? ` (${payCurrency})` : ""}</Label>
               <Input
                 id="amount"
                 type="number"
@@ -1099,7 +1211,7 @@ export function CheckoutPanel({
               className="h-10"
               onClick={() => setSplitOn((on) => !on)}
             >
-              {splitOn ? "Use one payment method" : "Cash and UPI on this bill"}
+              {splitOn ? "Use one payment method" : "Split across payment methods"}
             </Button>
           )}
 
@@ -1115,6 +1227,7 @@ export function CheckoutPanel({
                         rows.map((row) => (row.id === line.id ? { ...row, method: next } : row)),
                       )
                     }
+                    cashLabel={cashLabel}
                   />
                   <Input
                     type="number"
@@ -1123,7 +1236,7 @@ export function CheckoutPanel({
                     step="0.01"
                     className="h-11 tabular-nums"
                     value={line.amount}
-                    placeholder={line.method === "CASH" ? "Cash received" : "Amount"}
+                    placeholder={line.method === "CASH" ? `${cashLabel} received` : "Amount"}
                     aria-label={`${line.method} amount`}
                     onChange={(e) =>
                       setSplitLines((rows) =>
@@ -1161,24 +1274,62 @@ export function CheckoutPanel({
           )}
 
           {showUpiQr && (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-white p-4">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-4">
               {upiUri ? (
                 <>
                   <QRCodeSVG value={upiUri} size={176} level="M" marginSize={1} />
-                  <p className="text-xs font-medium text-[#17251d]">
+                  <p className="text-xs font-medium text-foreground">
                     {demoUpi
                       ? `Demo QR · scanning does not move money · ${formatCurrency(upiAmount)}`
                       : `Scan with any UPI app · ${formatCurrency(upiAmount)} pre-filled`}
                   </p>
-                  <p className="text-[11px] text-neutral-500">Also shown on the customer display</p>
+                  <p className="text-[11px] text-muted-foreground">Also shown on the customer display</p>
                 </>
               ) : (
-                <p className="text-center text-xs text-neutral-600">
-                  No UPI id set yet. <Link href="/settings" className="font-medium underline">Add your UPI id in Settings → Restaurant</Link> to show a payment QR here.
+                <p className="text-center text-xs text-muted-foreground">
+                  No UPI id set yet.{" "}
+                  <a
+                    href="/settings"
+                    className="font-medium underline"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      openNavHref("/settings", true);
+                    }}
+                  >
+                    Add your UPI id in Settings → Restaurant
+                  </a>{" "}
+                  to show a payment QR here.
                 </p>
               )}
             </div>
           )}
+
+          {order?.id &&
+          remainingDue > 0 &&
+          settings?.restaurant.billPayLinkEnabled !== false &&
+          upiVpa ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={payLinkBusy}
+                onClick={() => void sharePayLink("copy")}
+              >
+                <Link2 className="size-3.5" />
+                Copy pay link
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={payLinkBusy}
+                onClick={() => void sharePayLink("whatsapp")}
+              >
+                WhatsApp pay link
+              </Button>
+            </div>
+          ) : null}
 
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
             <Label htmlFor="split" className="text-xs text-muted-foreground">

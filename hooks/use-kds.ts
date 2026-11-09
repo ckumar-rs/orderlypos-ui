@@ -95,7 +95,7 @@ export function useKdsTickets(branchId: string | null, stationId = "", enabled =
       }
     },
     enabled: !!branchId && enabled,
-    refetchInterval: 20_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -319,7 +319,7 @@ export function useKdsExpo(branchId: string | null, enabled = true) {
     queryKey: ["kds", "expo", branchId],
     queryFn: () => api.get<ExpoOrder[]>(`/kds/expo?branchId=${branchId}`),
     enabled: !!branchId && enabled,
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -328,6 +328,20 @@ export function useAssembleExpo(branchId: string | null) {
   return useMutation({
     mutationFn: (orderId: string) => api.post(`/kds/expo/${orderId}/assemble?branchId=${branchId}`),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["kds"] }),
+  });
+}
+
+export function useClearStalePass(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ cleared: number; olderThanHours: number }>(
+        `/kds/clear-stale?branchId=${branchId}`,
+      ),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["kds"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
   });
 }
 

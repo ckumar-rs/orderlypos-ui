@@ -25,6 +25,7 @@ const privatePrefixes = [
   "/kiosk",
   "/guest",
   "/order",
+  "/pay",
   "/customer-display",
 ];
 
@@ -80,6 +81,8 @@ export const config = {
     "/kiosk/:path*",
     "/guest/:path*",
     "/order/:path*",
+    "/pay",
+    "/pay/:path*",
     "/customer-display",
     "/customer-display/:path*",
   ],

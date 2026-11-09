@@ -12,9 +12,12 @@ import {
 } from "@nodedr-restaurant/types";
 import { AddBranchDialog, CopyMenuButton } from "@/components/layout/add-branch-dialog";
 import { KioskCard } from "@/components/settings/kiosk-card";
+import { OnboardingCard } from "@/components/settings/onboarding-card";
+import { OrderingPickupCard } from "@/components/settings/ordering-pickup-card";
 import { OpsConfigCard } from "@/components/settings/ops-config-card";
 import { PrinterDiagnosticsCard } from "@/components/settings/printer-diagnostics-card";
-import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { AccountingCard } from "@/components/settings/accounting-card";
+import { TeamHrCard } from "@/components/settings/team-hr-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,13 +50,6 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[32px] font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted-foreground">Restaurant, branch, and staff configuration</p>
-      </div>
-
-      <SettingsTabs />
-
       {isLoading || !data ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Skeleton className="h-72 rounded-xl" />
@@ -68,6 +64,8 @@ export default function SettingsPage() {
         />
       )}
 
+      {data && <OnboardingCard key={`onboarding-${data.restaurant.id}`} branchId={branchId} />}
+
       {data && (
         <OpsConfigCard
           key={`ops-${data.restaurant.id}`}
@@ -79,6 +77,32 @@ export default function SettingsPage() {
       {data && <OnlineOrdersCard key={data.branch.id} branchId={branchId} branch={data.branch} />}
 
       {data && <KioskCard key={`kiosk-${data.branch.id}`} branchId={branchId} branch={data.branch} />}
+
+      {data && (
+        <OrderingPickupCard
+          key={`ordering-${data.branch.id}`}
+          branchId={branchId}
+          branch={data.branch}
+          restaurant={data.restaurant}
+          cashLabel={data.restaurant.cashLabel}
+        />
+      )}
+
+      {data && (
+        <TeamHrCard
+          key={`team-hr-${data.branch.id}`}
+          branchId={branchId}
+          branch={data.branch}
+        />
+      )}
+
+      {data && (
+        <AccountingCard
+          key={`acct-${data.branch.id}`}
+          branchId={branchId}
+          branch={data.branch}
+        />
+      )}
 
       <NotificationSettingsCard />
 

@@ -48,6 +48,8 @@ export function CartPanel({
   onDeliveryChange,
   scheduledFor,
   onScheduledForChange,
+  guestCount,
+  onGuestCountChange,
 }: {
   lines: CartLine[];
   orderType: PosOrderType;
@@ -76,6 +78,8 @@ export function CartPanel({
   onDeliveryChange: (d: DeliveryDetails) => void;
   scheduledFor: string;
   onScheduledForChange: (v: string) => void;
+  guestCount: number;
+  onGuestCountChange: (n: number) => void;
 }) {
   const chargeOf = (line: CartLine) => {
     const base = line.unitPrice * line.quantity;
@@ -107,24 +111,42 @@ export function CartPanel({
       </Tabs>
 
       {orderType === "DINE_IN" && (
-        <Select value={tableId} onValueChange={(v) => onTableChange(v ?? "")}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select table">
-              {(value: string | null) => {
-                const t = tables.find((table) => table.id === value);
-                if (!t) return "Select table";
-                return `${t.name ?? `Table ${t.number}`}${t.status === "OCCUPIED" ? " (occupied)" : ""}`;
+        <div className="grid grid-cols-[1fr_5.5rem] gap-2">
+          <Select value={tableId} onValueChange={(v) => onTableChange(v ?? "")}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select table">
+                {(value: string | null) => {
+                  const t = tables.find((table) => table.id === value);
+                  if (!t) return "Select table";
+                  return `${t.name ?? `Table ${t.number}`}${t.status === "OCCUPIED" ? " (occupied)" : ""}`;
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {tables.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name ?? `Table ${t.number}`} {t.status === "OCCUPIED" ? "(occupied)" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <label className="flex flex-col gap-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+            Covers
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              inputMode="numeric"
+              value={guestCount || ""}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                onGuestCountChange(Number.isFinite(n) && n > 0 ? Math.min(100, Math.floor(n)) : 0);
               }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {tables.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.name ?? `Table ${t.number}`} {t.status === "OCCUPIED" ? "(occupied)" : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              className="h-9 font-mono"
+              aria-label="Guest covers"
+            />
+          </label>
+        </div>
       )}
 
       {orderType === "DELIVERY" && (

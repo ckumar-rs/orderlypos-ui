@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { subscribeDisplay, type DisplayState } from "@/lib/customer-display";
+import { publishDisplay, subscribeDisplay, type DisplayState } from "@/lib/customer-display";
 import { formatCurrency } from "@/lib/format";
 import { playPaymentReceived } from "@/lib/celebrate";
 import { QRCodeSVG } from "qrcode.react";
@@ -10,6 +10,9 @@ import { QRCodeSVG } from "qrcode.react";
  * Open this on the customer-facing screen (or second monitor):
  * /customer-display. It shows the order being rung up on the POS in the
  * browser window next to it, then a thank-you once it is paid.
+ *
+ * Must be the same browser origin as the till (e.g. both localhost:3000).
+ * BroadcastChannel + localStorage do not cross machines or different hosts.
  */
 export default function CustomerDisplayPage() {
   const [state, setState] = useState<DisplayState>({ kind: "idle" });
@@ -25,7 +28,10 @@ export default function CustomerDisplayPage() {
   // After "paid", fall back to the welcome screen for the next guest.
   useEffect(() => {
     if (state.kind !== "paid") return;
-    const t = setTimeout(() => setState({ kind: "idle" }), 8000);
+    const t = setTimeout(() => {
+      setState({ kind: "idle" });
+      publishDisplay({ kind: "idle" }, "checkout");
+    }, 8000);
     return () => clearTimeout(t);
   }, [state]);
 
@@ -40,9 +46,14 @@ export default function CustomerDisplayPage() {
         </p>
       )}
       {state.kind === "idle" && (
-        <div className="m-auto text-center">
+        <div className="m-auto max-w-xl text-center">
           <p className="text-5xl font-semibold tracking-tight">Welcome</p>
           <p className="mt-3 text-xl text-muted-foreground">Your order will appear here</p>
+          <p className="mt-8 text-sm text-muted-foreground">
+            Listening for the till on this same browser address. Add items on{" "}
+            <span className="font-medium text-foreground">/pos</span> — keep both windows on the
+            same host (for example both on localhost:3000).
+          </p>
         </div>
       )}
 

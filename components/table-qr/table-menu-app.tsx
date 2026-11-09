@@ -27,6 +27,8 @@ interface PublicTableMenu {
   taxLabel: string | null;
   upi: { vpa: string; payeeName: string } | null;
   onlineOrdersPaused?: boolean;
+  guestSignals?: { paidClaim?: boolean; cod?: boolean };
+  pay?: { preferred?: string | null; cashLabel?: string };
   categories: KioskMenu["categories"];
 }
 
@@ -41,6 +43,7 @@ function asKioskMenu(data: PublicTableMenu): KioskMenu {
     taxLabel: data.taxLabel ?? "",
     services: { dineIn: true, takeaway: false },
     upi: data.upi,
+    pay: data.pay,
     categories: data.categories,
   };
 }
@@ -53,6 +56,7 @@ export function TableMenuApp({ qrToken }: { qrToken: string }) {
     serviceType: "DINE_IN",
   });
   const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const online = useOnline();
   const menuQuery = useQuery({
     queryKey: ["public-menu", qrToken],
@@ -92,8 +96,10 @@ export function TableMenuApp({ qrToken }: { qrToken: string }) {
     inFlight.current = true;
     const requestId = state.requestId ?? uuid();
     dispatch({ type: "SUBMIT_START", newRequestId: requestId });
+    const phoneDigits = guestPhone.replace(/\D/g, "");
     const body = {
       guestName: guestName.trim() || "Guest",
+      ...(phoneDigits.length >= 8 ? { phone: phoneDigits } : {}),
       requestId,
       items: toOrderItems(state.basket),
     };
@@ -166,7 +172,14 @@ export function TableMenuApp({ qrToken }: { qrToken: string }) {
           onNewOrder={() => dispatch({ type: "RESET" })}
         />
         {state.confirmation.orderNumber !== "QUEUED" ? (
-          <GuestSettle token={qrToken} orderNumber={state.confirmation.orderNumber} currency={menu.currency} />
+          <GuestSettle
+            token={qrToken}
+            orderNumber={state.confirmation.orderNumber}
+            currency={menu.currency}
+            guestSignals={menuQuery.data?.guestSignals}
+            cashLabel={menuQuery.data?.pay?.cashLabel}
+            preferredPaymentMethod={menuQuery.data?.pay?.preferred}
+          />
         ) : null}
       </div>
     );
@@ -193,6 +206,15 @@ export function TableMenuApp({ qrToken }: { qrToken: string }) {
             className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
             value={guestName}
             onChange={(e) => setGuestName(e.target.value)}
+          />
+        </label>
+        <label className="px-4 pt-2 text-sm text-muted-foreground">
+          Phone for points (optional)
+          <input
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground"
+            inputMode="tel"
+            value={guestPhone}
+            onChange={(e) => setGuestPhone(e.target.value)}
           />
         </label>
         <ReviewScreen

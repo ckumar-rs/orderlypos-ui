@@ -1,8 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AppShell } from "@/components/layout/app-shell";
+import { Logo } from "@/components/layout/logo";
+import { useOnboardingGateState } from "@/components/layout/onboarding-gate";
+import { UserMenu } from "@/components/layout/user-menu";
 import { useCurrentUser } from "@/hooks/use-auth";
 import { BranchProvider, useBranch } from "@/hooks/use-branch";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -21,6 +25,57 @@ function RealtimeBridge() {
   const { branchId } = useBranch();
   useRealtime(branchId);
   return null;
+}
+
+function SetupShell({
+  user,
+  children,
+}: {
+  user: NonNullable<ReturnType<typeof useCurrentUser>["data"]>["user"];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative flex min-h-screen flex-col bg-background">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_color-mix(in_oklch,var(--primary)_12%,transparent),_transparent_55%),linear-gradient(180deg,var(--muted)_0%,var(--background)_42%)]"
+      />
+      <header className="relative z-10 flex h-14 items-center justify-between border-b border-border/70 bg-background/70 px-4 backdrop-blur-md sm:px-6">
+        <Link href="/onboarding" className="flex items-center gap-3" aria-label="Setup home">
+          <Logo className="h-7 w-auto" />
+          <span className="hidden text-sm font-medium tracking-tight text-foreground sm:inline">
+            Outlet setup
+          </span>
+        </Link>
+        <UserMenu user={user} />
+      </header>
+      <main className="relative z-10 flex-1">{children}</main>
+    </div>
+  );
+}
+
+function DashboardChrome({
+  user,
+  children,
+}: {
+  user: NonNullable<ReturnType<typeof useCurrentUser>["data"]>["user"];
+  children: React.ReactNode;
+}) {
+  const { blocking, useSetupShell } = useOnboardingGateState();
+
+  if (blocking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6 text-center text-sm text-muted-foreground">
+        Opening setup…
+      </div>
+    );
+  }
+
+  if (useSetupShell) {
+    return <SetupShell user={user}>{children}</SetupShell>;
+  }
+
+  return <AppShell user={user}>{children}</AppShell>;
 }
 
 export default function DashboardGroupLayout({ children }: { children: React.ReactNode }) {
@@ -62,7 +117,7 @@ export default function DashboardGroupLayout({ children }: { children: React.Rea
   return (
     <BranchProvider>
       <RealtimeBridge />
-      <AppShell user={data.user}>{children}</AppShell>
+      <DashboardChrome user={data.user}>{children}</DashboardChrome>
     </BranchProvider>
   );
 }

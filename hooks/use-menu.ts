@@ -56,6 +56,15 @@ export interface KitchenCourse {
   holdByDefault: boolean;
 }
 
+export function useKitchenCourses(branchId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["menu", "courses", branchId],
+    queryFn: () => api.get<KitchenCourse[]>(`/menu/courses?branchId=${branchId}`),
+    enabled: !!branchId && enabled,
+    staleTime: 60_000,
+  });
+}
+
 export interface Modifier {
   id: string;
   name: string;
@@ -80,6 +89,7 @@ export interface MenuItem {
   courseId?: string | null;
   course?: { id: string; name: string } | null;
   name: string;
+  description?: string | null;
   sku?: string | null;
   prepTimeMinutes?: number | null;
   isJain?: boolean;
@@ -92,6 +102,8 @@ export interface MenuItem {
   isVegan?: boolean;
   spiceLevel?: string;
   isActive: boolean;
+  allergens?: string[];
+  sortOrder?: number;
   isCombo: boolean;
   barcode: string | null;
   hsnCode: string | null;
@@ -194,6 +206,17 @@ export function useUpdateMenuItem(branchId: string | null) {
   });
 }
 
+export function useEnsureMenuSkus(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ assigned: number; total: number }>(
+        `/menu/items/ensure-skus?branchId=${branchId}`,
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["menu", "items", branchId] }),
+  });
+}
+
 export function useModifierGroups(branchId: string | null) {
   return useQuery({
     queryKey: ["menu", "modifier-groups", branchId],
@@ -212,11 +235,35 @@ export function useCreateModifierGroup(branchId: string | null) {
   });
 }
 
+export function useUpdateModifierGroup(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: Partial<ModifierGroupDto> }) =>
+      api.patch(`/menu/modifier-groups/${id}?branchId=${branchId}`, dto),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["menu", "modifier-groups", branchId] }),
+  });
+}
+
 export function useUpdateModifierImage(branchId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, imageUrl }: { id: string; imageUrl: string | null }) =>
-      api.patch(`/menu/modifiers/${id}?branchId=${branchId}`, { imageUrl }),
+    mutationFn: ({
+      id,
+      imageUrl,
+      name,
+      priceAdjustment,
+    }: {
+      id: string;
+      imageUrl?: string | null;
+      name?: string;
+      priceAdjustment?: number;
+    }) =>
+      api.patch(`/menu/modifiers/${id}?branchId=${branchId}`, {
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
+        ...(name !== undefined ? { name } : {}),
+        ...(priceAdjustment !== undefined ? { priceAdjustment } : {}),
+      }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["menu", "modifier-groups", branchId] }),
   });
@@ -301,6 +348,9 @@ export function flattenCategories(categories: MenuCategory[]) {
     bucket.push(category);
     byParent.set(key, bucket);
   }
+  for (const bucket of byParent.values()) {
+    bucket.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }
   const ids = new Set(categories.map((c) => c.id));
   const out: (MenuCategory & { depth: number })[] = [];
   const walk = (parentId: string | null, depth: number) => {
@@ -322,6 +372,34 @@ export function useDeleteMenuItem(branchId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/menu/items/${id}?branchId=${branchId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["menu", "items", branchId] }),
+  });
+}
+
+export function useDuplicateMenuItem(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<MenuItem>(`/menu/items/${id}/duplicate?branchId=${branchId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["menu", "items", branchId] }),
+  });
+}
+
+export function useReorderCategories(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) =>
+      api.put(`/menu/categories/reorder?branchId=${branchId}`, { ids }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["menu", "categories", branchId] }),
+  });
+}
+
+export function useReorderMenuItems(branchId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId?: string }) =>
+      api.put(`/menu/items/reorder?branchId=${branchId}`, { ids, categoryId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["menu", "items", branchId] }),
   });
 }

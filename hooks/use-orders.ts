@@ -46,6 +46,7 @@ export function useCreateOrder(branchId: string | null) {
       // Without refreshing the per-table open-bill cache, going Table 1 -> 2 ->
       // 1 showed Table 1 as having no order and the next send opened a duplicate.
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["kds"] });
       queryClient.invalidateQueries({ queryKey: ["floors", branchId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "summary", branchId] });
     },
@@ -112,6 +113,9 @@ export interface OpenOrder {
   orderNumber: string;
   type: string;
   tableId: string | null;
+  guestName?: string | null;
+  guestCount?: number | null;
+  createdAt?: string;
   subtotal: string;
   taxAmount: string;
   discountAmount: string;
@@ -121,6 +125,13 @@ export interface OpenOrder {
   totalAmount: string;
   status: string;
   customer: Customer | null;
+  table?: { id: string; number: string | number; name: string | null } | null;
+  items?: {
+    id: string;
+    nameSnapshot: string;
+    quantity: number;
+    lineTotal: string | number;
+  }[];
 }
 
 export type OrderChannel = "STAFF" | "ONLINE";
@@ -262,12 +273,13 @@ export function useRejectOrder(branchId: string | null) {
   });
 }
 
-export function useOpenOrders(branchId: string | null) {
+export function useOpenOrders(branchId: string | null, enabled = true) {
   return useQuery({
     queryKey: ["orders", "open", branchId],
     queryFn: () => api.get<OpenOrder[]>(`/orders?branchId=${branchId}`),
-    enabled: !!branchId,
-    refetchInterval: 60_000,
+    enabled: !!branchId && enabled,
+    refetchInterval: 5_000,
+    staleTime: 0,
   });
 }
 
