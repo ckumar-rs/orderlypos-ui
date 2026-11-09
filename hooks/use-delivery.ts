@@ -47,6 +47,54 @@ export function useDeliveries(branchId: string | null, history: boolean) {
   });
 }
 
+export interface LiveDelivery {
+  id: string;
+  orderNumber: string;
+  deliveryStatus: DeliveryStatus | null;
+  guestName: string | null;
+  deliveryAddress: string | null;
+  driver: { id: string; name: string } | null;
+  driverLat: string | number | null;
+  driverLng: string | number | null;
+  driverLocationAt: string | null;
+  trackingToken: string | null;
+  staleGps: boolean;
+  lastEvent: { type: string; createdAt: string } | null;
+}
+
+export interface LiveDeliveryResponse {
+  branch: {
+    lat: number | null;
+    lng: number | null;
+    radiusKm: number;
+    staleMinutes: number;
+  };
+  deliveries: LiveDelivery[];
+}
+
+export function useLiveDeliveries(branchId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["deliveries", "live", branchId],
+    queryFn: () => api.get<LiveDeliveryResponse>(`/delivery/live?branchId=${branchId}`),
+    enabled: !!branchId && enabled,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useDeliveryTrail(branchId: string | null, orderId: string | null) {
+  return useQuery({
+    queryKey: ["delivery-trail", branchId, orderId],
+    queryFn: () =>
+      api.get<{
+        trackingToken: string | null;
+        branch: { lat: number | null; lng: number | null; radiusKm: number };
+        pings: Array<{ lat: number; lng: number; recordedAt: string }>;
+        events: Array<{ type: string; lat: number | null; lng: number | null; createdAt: string }>;
+      }>(`/delivery/${orderId}/trail?branchId=${branchId}`),
+    enabled: !!branchId && !!orderId,
+  });
+}
+
 export function useDrivers(branchId: string | null) {
   return useQuery({
     queryKey: ["deliveries", "drivers", branchId],
