@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { AddonPicker } from "@/components/menu/addon-picker";
+import { AllergenFields } from "@/components/menu/allergen-fields";
+import { ITEM_FORM_STEPS, ItemFormStepChrome } from "@/components/menu/item-form-steps";
 import { packedSizes, SizeRows, type SizeDraft } from "@/components/menu/size-rows";
 import {
   flattenCategories,
@@ -45,6 +47,7 @@ export function AddItemDialog({
   categories: MenuCategory[];
 }) {
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [stationId, setStationId] = useState<string>("");
@@ -62,6 +65,8 @@ export function AddItemDialog({
   const [isJain, setIsJain] = useState(false);
   const [spiceLevel, setSpiceLevel] = useState("NONE");
   const [isGlutenFree, setIsGlutenFree] = useState(false);
+  const [description, setDescription] = useState("");
+  const [allergens, setAllergens] = useState<string[]>([]);
   const [sku, setSku] = useState("");
   const [prepTime, setPrepTime] = useState("");
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
@@ -80,19 +85,27 @@ export function AddItemDialog({
   const nestedCategories = flattenCategories(categories);
   const priceLabel =
     settings?.branch.taxMode === "EXCLUSIVE" ? "Price (excl. tax)" : "Price (incl. tax)";
+  const isLastStep = step === ITEM_FORM_STEPS.length - 1;
 
   const reset = () => {
+    setStep(0);
     setName("");
     setCategoryId("");
     setStationId("");
     setCourseId("");
     setPrice("");
+    setHalfPrice("");
+    setBarcode("");
+    setHsnCode("");
+    setSoldByWeight(false);
     setTaxRatePercent("5");
     setIsVeg(true);
     setIsVegan(false);
     setIsJain(false);
     setSpiceLevel("NONE");
     setIsGlutenFree(false);
+    setDescription("");
+    setAllergens([]);
     setSku("");
     setPrepTime("");
     setModifierGroupIds([]);
@@ -115,10 +128,47 @@ export function AddItemDialog({
     });
   };
 
+  const validateStep = (index: number) => {
+    if (index === 0) {
+      if (!name.trim()) {
+        toast.error("Enter a dish name");
+        return false;
+      }
+      if (!categoryId) {
+        toast.error("Choose a category");
+        return false;
+      }
+      return true;
+    }
+    if (index === 1) {
+      if (price.trim() === "" || Number.isNaN(Number(price))) {
+        toast.error("Enter a valid price");
+        return false;
+      }
+      if (taxRatePercent.trim() === "" || Number.isNaN(Number(taxRatePercent))) {
+        toast.error("Enter a valid tax rate");
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((current) => Math.min(ITEM_FORM_STEPS.length - 1, current + 1));
+  };
+
+  const goBack = () => setStep((current) => Math.max(0, current - 1));
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryId) {
-      toast.error("Choose a category");
+    if (!isLastStep) {
+      goNext();
+      return;
+    }
+    if (!validateStep(0) || !validateStep(1)) {
+      setStep(!name.trim() || !categoryId ? 0 : 1);
       return;
     }
     createItem.mutate(
@@ -138,7 +188,8 @@ export function AddItemDialog({
         sku: sku.trim() || undefined,
         prepTimeMinutes: prepTime.trim() === "" ? undefined : Number(prepTime),
         spiceLevel: spiceLevel as "NONE" | "MILD" | "MEDIUM" | "HOT" | "EXTRA_HOT",
-        allergens: [],
+        description: description.trim() || undefined,
+        allergens,
         isActive: true,
         modifierGroupIds,
         imageUrl,
@@ -169,7 +220,7 @@ export function AddItemDialog({
       <DialogTrigger
         render={
           <Button size="sm" disabled={categories.length === 0}>
-            Add item
+            Add dish
           </Button>
         }
       />
@@ -177,213 +228,293 @@ export function AddItemDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>New menu item</DialogTitle>
+            <ItemFormStepChrome step={step} onJumpBack={setStep} title="" />
           </DialogHeader>
 
-          <div className="flex flex-col gap-2">
-            <Label>Photo</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={onFileChange}
-            />
-            {imagePreview ? (
-              <div className="relative h-28 w-28 overflow-hidden rounded-lg border border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element -- local blob/uploaded preview, not a Next-optimizable remote asset */}
-                <img src={imagePreview} alt="" className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageUrl(undefined);
-                    setImagePreview(undefined);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-foreground"
-                  aria-label="Remove photo"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                {uploadImage.isPending && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 text-xs">
-                    Uploading…
+          {step === 0 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Photo</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
+                {imagePreview ? (
+                  <div className="relative h-28 w-28 overflow-hidden rounded-lg border border-border">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- local blob/uploaded preview */}
+                    <img src={imagePreview} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageUrl(undefined);
+                        setImagePreview(undefined);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-foreground"
+                      aria-label="Remove photo"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    {uploadImage.isPending && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/60 text-xs">
+                        Uploading…
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-28 w-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  >
+                    <ImagePlus className="h-5 w-5" />
+                    <span className="text-xs">Add photo</span>
+                  </button>
                 )}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex h-28 w-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                <ImagePlus className="h-5 w-5" />
-                <span className="text-xs">Add photo</span>
-              </button>
-            )}
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="item-name">Name</Label>
-            <Input
-              id="item-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Margherita Pizza"
-              required
-              autoFocus
-            />
-          </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="item-name">Name</Label>
+                <Input
+                  id="item-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Margherita Pizza"
+                  required
+                  autoFocus
+                />
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {nestedCategories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {`${"– ".repeat(c.depth)}${c.name}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="flex flex-col gap-2">
+                <Label>Category</Label>
+                <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {nestedCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {`${"– ".repeat(c.depth)}${c.name}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="price">{priceLabel}</Label>
-              <Input
-                id="price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
+          {step === 1 && (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="price">{priceLabel}</Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="tax">Tax rate %</Label>
+                  <Input
+                    id="tax"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={taxRatePercent}
+                    onChange={(e) => setTaxRatePercent(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="add-half">Half portion price (optional)</Label>
+                <Input
+                  id="add-half"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={halfPrice}
+                  onChange={(e) => setHalfPrice(e.target.value)}
+                  placeholder="Leave empty if there is no half/full choice"
+                />
+                <p className="text-xs text-muted-foreground">
+                  When set, the POS asks Half / Full / Custom. The price above is the Full portion.
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={soldByWeight}
+                  onChange={(e) => setSoldByWeight(e.target.checked)}
+                />
+                Sold by weight. The price is per kilogram.
+              </label>
+              <SizeRows sizes={sizes} onChange={setSizes} />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Kitchen station</Label>
+                <Select value={stationId} onValueChange={(v) => setStationId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stations
+                      ?.filter((s) => s.role !== "EXPO")
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label>Kitchen course</Label>
+                <Select value={courseId} onValueChange={(v) => setCourseId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(courses ?? []).map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="is-veg" className="cursor-pointer">
+                  Vegetarian
+                </Label>
+                <Switch id="is-veg" checked={isVeg} onCheckedChange={setIsVeg} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="is-vegan" className="cursor-pointer">
+                  Vegan
+                </Label>
+                <Switch id="is-vegan" checked={isVegan} onCheckedChange={setIsVegan} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="is-jain" className="cursor-pointer">
+                  Jain
+                </Label>
+                <Switch id="is-jain" checked={isJain} onCheckedChange={setIsJain} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="is-gluten" className="cursor-pointer">
+                  Gluten-free
+                </Label>
+                <Switch id="is-gluten" checked={isGlutenFree} onCheckedChange={setIsGlutenFree} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="spice">Spice</Label>
+                <select
+                  id="spice"
+                  className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                  value={spiceLevel}
+                  onChange={(e) => setSpiceLevel(e.target.value)}
+                >
+                  <option value="NONE">No spice mark</option>
+                  <option value="MILD">Mild</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HOT">Hot</option>
+                  <option value="EXTRA_HOT">Extra hot</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="flex max-h-[50vh] flex-col gap-4 overflow-y-auto pr-1">
+              <AllergenFields
+                description={description}
+                onDescriptionChange={setDescription}
+                allergens={allergens}
+                onChange={setAllergens}
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="add-sku">SKU</Label>
+                  <Input id="add-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="add-prep">Prep minutes</Label>
+                  <Input
+                    id="add-prep"
+                    inputMode="numeric"
+                    value={prepTime}
+                    onChange={(e) => setPrepTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="add-hsn">HSN / SAC</Label>
+                <Input
+                  id="add-hsn"
+                  value={hsnCode}
+                  onChange={(e) => setHsnCode(e.target.value)}
+                  placeholder="2106"
+                  maxLength={16}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="add-barcode">Barcode</Label>
+                <Input
+                  id="add-barcode"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Scanner code"
+                  autoComplete="off"
+                />
+              </div>
+              <AddonPicker
+                branchId={branchId}
+                selectedIds={modifierGroupIds}
+                onChange={setModifierGroupIds}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="tax">Tax rate %</Label>
-              <Input
-                id="tax"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={taxRatePercent}
-                onChange={(e) => setTaxRatePercent(e.target.value)}
-                required
-              />
-            </div>
-          </div>
+          )}
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="add-half">Half portion price (optional)</Label>
-            <Input
-              id="add-half"
-              type="number"
-              min="0"
-              step="0.01"
-              value={halfPrice}
-              onChange={(e) => setHalfPrice(e.target.value)}
-              placeholder="Leave empty if there is no half/full choice"
-            />
-            <p className="text-xs text-muted-foreground">
-              When set, the POS asks Half / Full / Custom. The price above is the Full portion.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Kitchen station</Label>
-            <Select value={stationId} onValueChange={(v) => setStationId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                {stations?.filter((s) => s.role !== "EXPO").map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label>Kitchen course</Label>
-            <Select value={courseId} onValueChange={(v) => setCourseId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                {(courses ?? []).map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="is-veg" className="cursor-pointer">
-              Vegetarian
-            </Label>
-            <Switch id="is-veg" checked={isVeg} onCheckedChange={setIsVeg} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="is-vegan" className="cursor-pointer">Vegan</Label>
-            <Switch id="is-vegan" checked={isVegan} onCheckedChange={setIsVegan} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="is-jain" className="cursor-pointer">Jain</Label>
-            <Switch id="is-jain" checked={isJain} onCheckedChange={setIsJain} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="is-gluten" className="cursor-pointer">Gluten-free</Label>
-            <Switch id="is-gluten" checked={isGlutenFree} onCheckedChange={setIsGlutenFree} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="spice">Spice</Label>
-            <select id="spice" className="h-10 rounded-md border border-input bg-background px-2 text-sm" value={spiceLevel} onChange={(e) => setSpiceLevel(e.target.value)}>
-              <option value="NONE">No spice mark</option>
-              <option value="MILD">Mild</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HOT">Hot</option>
-              <option value="EXTRA_HOT">Extra hot</option>
-            </select>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="add-sku">SKU</Label>
-              <Input id="add-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="add-prep">Prep minutes</Label>
-              <Input id="add-prep" inputMode="numeric" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="add-hsn">HSN / SAC</Label>
-            <Input id="add-hsn" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} placeholder="2106" maxLength={16} autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="add-barcode">Barcode</Label>
-            <Input id="add-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scanner code" autoComplete="off" />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={soldByWeight} onChange={(e) => setSoldByWeight(e.target.checked)} />
-            Sold by weight. The price is per kilogram.
-          </label>
-          <SizeRows sizes={sizes} onChange={setSizes} />
-          <AddonPicker branchId={branchId} selectedIds={modifierGroupIds} onChange={setModifierGroupIds} />
-
-          <DialogFooter>
-            <Button type="submit" disabled={createItem.isPending || uploadImage.isPending}>
-              {createItem.isPending ? "Adding…" : "Add item"}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={goBack}
+              disabled={step === 0 || createItem.isPending}
+            >
+              Back
             </Button>
+            <div className="flex gap-2">
+              {!isLastStep ? (
+                <Button type="button" onClick={goNext} disabled={uploadImage.isPending}>
+                  Next
+                </Button>
+              ) : (
+                <Button type="submit" disabled={createItem.isPending || uploadImage.isPending}>
+                  {createItem.isPending ? "Adding…" : "Add item"}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

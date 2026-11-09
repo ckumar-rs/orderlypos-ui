@@ -36,6 +36,8 @@ import {
 import { ApiError, api } from "@/lib/api";
 import { hasPermission, useCurrentUser } from "@/hooks/use-auth";
 import { AddonPicker } from "@/components/menu/addon-picker";
+import { AllergenFields } from "@/components/menu/allergen-fields";
+import { ITEM_FORM_STEPS, ItemFormStepChrome } from "@/components/menu/item-form-steps";
 import { packedSizes, SizeRows, type SizeDraft } from "@/components/menu/size-rows";
 import { StockTrackingSection } from "@/components/menu/stock-tracking-section";
 import { useSettings } from "@/hooks/use-settings";
@@ -54,6 +56,7 @@ export function EditItemDialog({
   categories: MenuCategory[];
   onClose: () => void;
 }) {
+  const [step, setStep] = useState(0);
   const [name, setName] = useState(item.name);
   const [categoryId, setCategoryId] = useState(item.categoryId);
   const [stationId, setStationId] = useState(item.stationId ?? "");
@@ -66,6 +69,9 @@ export function EditItemDialog({
   const [isJain, setIsJain] = useState(Boolean(item.isJain));
   const [spiceLevel, setSpiceLevel] = useState(item.spiceLevel ?? "NONE");
   const [isGlutenFree, setIsGlutenFree] = useState(Boolean(item.isGlutenFree));
+  const [isActive, setIsActive] = useState(item.isActive !== false);
+  const [description, setDescription] = useState(item.description ?? "");
+  const [allergens, setAllergens] = useState<string[]>(item.allergens ?? []);
   const [sku, setSku] = useState(item.sku ?? "");
   const [prepTime, setPrepTime] = useState(item.prepTimeMinutes == null ? "" : String(item.prepTimeMinutes));
   const [barcode, setBarcode] = useState(item.barcode ?? "");
@@ -99,6 +105,8 @@ export function EditItemDialog({
   const nestedCategories = flattenCategories(categories);
   const priceLabel =
     settings?.branch.taxMode === "EXCLUSIVE" ? "Price (excl. tax)" : "Price (incl. tax)";
+  const isLastStep = step === ITEM_FORM_STEPS.length - 1;
+  const canManageInventory = hasPermission(me?.user, "inventory.manage");
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -113,10 +121,47 @@ export function EditItemDialog({
     });
   };
 
+  const validateStep = (index: number) => {
+    if (index === 0) {
+      if (!name.trim()) {
+        toast.error("Enter a dish name");
+        return false;
+      }
+      if (!categoryId) {
+        toast.error("Choose a category");
+        return false;
+      }
+      return true;
+    }
+    if (index === 1) {
+      if (String(price).trim() === "" || Number.isNaN(Number(price))) {
+        toast.error("Enter a valid price");
+        return false;
+      }
+      if (String(taxRatePercent).trim() === "" || Number.isNaN(Number(taxRatePercent))) {
+        toast.error("Enter a valid tax rate");
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((current) => Math.min(ITEM_FORM_STEPS.length - 1, current + 1));
+  };
+
+  const goBack = () => setStep((current) => Math.max(0, current - 1));
+
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryId) {
-      toast.error("Choose a category");
+    if (!isLastStep) {
+      goNext();
+      return;
+    }
+    if (!validateStep(0) || !validateStep(1)) {
+      setStep(!name.trim() || !categoryId ? 0 : 1);
       return;
     }
     updateItem.mutate(
@@ -135,6 +180,9 @@ export function EditItemDialog({
           isJain,
           spiceLevel: spiceLevel as "NONE" | "MILD" | "MEDIUM" | "HOT" | "EXTRA_HOT",
           isGlutenFree,
+          isActive,
+          description: description.trim() || undefined,
+          allergens,
           sku: sku.trim() || undefined,
           prepTimeMinutes: prepTime.trim() === "" ? undefined : Number(prepTime),
           imageUrl,
@@ -181,246 +229,345 @@ export function EditItemDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Edit menu item</DialogTitle>
+            <ItemFormStepChrome step={step} onJumpBack={setStep} title={item.name} />
           </DialogHeader>
 
-          <div className="flex flex-col gap-2">
-            <Label>Photo</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              onChange={onFileChange}
-            />
-            {imagePreview ? (
-              <div className="relative h-28 w-28 overflow-hidden rounded-lg border border-border">
-                {/* eslint-disable-next-line @next/next/no-img-element -- local blob/uploaded preview, not a Next-optimizable remote asset */}
-                <img src={imagePreview} alt="" className="h-full w-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImageUrl(undefined);
-                    setImagePreview(undefined);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-foreground"
-                  aria-label="Remove photo"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-                {uploadImage.isPending && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 text-xs">
-                    Uploading…
+          {step === 0 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Photo</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
+                {imagePreview ? (
+                  <div className="relative h-28 w-28 overflow-hidden rounded-lg border border-border">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- local blob/uploaded preview */}
+                    <img src={imagePreview} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageUrl(undefined);
+                        setImagePreview(undefined);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-background/80 text-foreground"
+                      aria-label="Remove photo"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    {uploadImage.isPending && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/60 text-xs">
+                        Uploading…
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-28 w-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+                  >
+                    <ImagePlus className="h-5 w-5" />
+                    <span className="text-xs">Add photo</span>
+                  </button>
                 )}
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex h-28 w-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
-              >
-                <ImagePlus className="h-5 w-5" />
-                <span className="text-xs">Add photo</span>
-              </button>
-            )}
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="item-edit-name">Name</Label>
-            <Input
-              id="item-edit-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Margherita Pizza"
-              required
-              autoFocus
-            />
-          </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="item-edit-name">Name</Label>
+                <Input
+                  id="item-edit-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Margherita Pizza"
+                  required
+                  autoFocus
+                />
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Category</Label>
-            <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                {nestedCategories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {`${"– ".repeat(c.depth)}${c.name}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="flex flex-col gap-2">
+                <Label>Category</Label>
+                <Select value={categoryId} onValueChange={(v) => setCategoryId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {nestedCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {`${"– ".repeat(c.depth)}${c.name}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-price">{priceLabel}</Label>
-              <Input
-                id="edit-price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-tax">Tax rate %</Label>
-              <Input
-                id="edit-tax"
-                type="number"
-                min="0"
-                max="100"
-                step="0.01"
-                value={taxRatePercent}
-                onChange={(e) => setTaxRatePercent(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-half">Half portion price (optional)</Label>
-            <Input
-              id="edit-half"
-              type="number"
-              min="0"
-              step="0.01"
-              value={halfPrice}
-              onChange={(e) => setHalfPrice(e.target.value)}
-              placeholder="Leave empty if there is no half/full choice"
-            />
-            <p className="text-xs text-muted-foreground">
-              When set, the POS asks Half / Full / Custom. The price above is the Full portion.
-            </p>
-          </div>
-
-          {(channels ?? []).length > 0 && (
-            <div className="flex flex-col gap-2">
-              <Label>Channel prices</Label>
-              <p className="text-xs text-muted-foreground">
-                Leave blank to use the channel markup on the base price.
-              </p>
-              {(channels ?? []).map((channel) => (
-                <div key={channel.id} className="grid grid-cols-[1fr_7rem] items-center gap-2">
-                  <span className="text-sm">
-                    {channel.name}
-                    {Number(channel.markupPercent)
-                      ? ` · +${Number(channel.markupPercent)}%`
-                      : ""}
-                  </span>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="Override"
-                    value={channelPrices[channel.id] ?? ""}
-                    onChange={(e) =>
-                      setChannelPrices((prev) => ({ ...prev, [channel.id]: e.target.value }))
-                    }
-                  />
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <div>
+                  <Label htmlFor="edit-is-active" className="cursor-pointer">
+                    Available (not 86)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Off hides this dish from POS, kiosk, and QR.
+                  </p>
                 </div>
-              ))}
+                <Switch id="edit-is-active" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <Label>Kitchen station</Label>
-            <Select value={stationId} onValueChange={(v) => setStationId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                {stations?.filter((s) => s.role !== "EXPO").map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {step === 1 && (
+            <div className="flex max-h-[50vh] flex-col gap-4 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="edit-price">{priceLabel}</Label>
+                  <Input
+                    id="edit-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="edit-tax">Tax rate %</Label>
+                  <Input
+                    id="edit-tax"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={taxRatePercent}
+                    onChange={(e) => setTaxRatePercent(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Kitchen course</Label>
-            <Select value={courseId} onValueChange={(v) => setCourseId(v ?? "")}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                {(courses ?? []).map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-half">Half portion price (optional)</Label>
+                <Input
+                  id="edit-half"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={halfPrice}
+                  onChange={(e) => setHalfPrice(e.target.value)}
+                  placeholder="Leave empty if there is no half/full choice"
+                />
+                <p className="text-xs text-muted-foreground">
+                  When set, the POS asks Half / Full / Custom. The price above is the Full portion.
+                </p>
+              </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="edit-is-veg" className="cursor-pointer">
-              Vegetarian
-            </Label>
-            <Switch id="edit-is-veg" checked={isVeg} onCheckedChange={setIsVeg} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="edit-is-vegan" className="cursor-pointer">Vegan</Label>
-            <Switch id="edit-is-vegan" checked={isVegan} onCheckedChange={setIsVegan} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="edit-is-jain" className="cursor-pointer">Jain</Label>
-            <Switch id="edit-is-jain" checked={isJain} onCheckedChange={setIsJain} />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-            <Label htmlFor="edit-is-gluten" className="cursor-pointer">Gluten-free</Label>
-            <Switch id="edit-is-gluten" checked={isGlutenFree} onCheckedChange={setIsGlutenFree} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="edit-spice">Spice</Label>
-            <select id="edit-spice" className="h-10 rounded-md border border-input bg-background px-2 text-sm" value={spiceLevel} onChange={(e) => setSpiceLevel(e.target.value)}>
-              <option value="NONE">No spice mark</option>
-              <option value="MILD">Mild</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HOT">Hot</option>
-              <option value="EXTRA_HOT">Extra hot</option>
-            </select>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-sku">SKU</Label>
-              <Input id="edit-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={soldByWeight}
+                  onChange={(e) => setSoldByWeight(e.target.checked)}
+                />
+                Sold by weight. The price is per kilogram.
+              </label>
+              <SizeRows sizes={sizes} onChange={setSizes} />
+
+              {(channels ?? []).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label>Channel prices</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank to use the channel markup on the base price.
+                  </p>
+                  {(channels ?? []).map((channel) => (
+                    <div key={channel.id} className="grid grid-cols-[1fr_7rem] items-center gap-2">
+                      <span className="text-sm">
+                        {channel.name}
+                        {Number(channel.markupPercent)
+                          ? ` · +${Number(channel.markupPercent)}%`
+                          : ""}
+                      </span>
+                      <Input
+                        inputMode="decimal"
+                        placeholder="Override"
+                        value={channelPrices[channel.id] ?? ""}
+                        onChange={(e) =>
+                          setChannelPrices((prev) => ({ ...prev, [channel.id]: e.target.value }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-prep">Prep minutes</Label>
-              <Input id="edit-prep" inputMode="numeric" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} />
+          )}
+
+          {step === 2 && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Kitchen station</Label>
+                <Select value={stationId} onValueChange={(v) => setStationId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stations
+                      ?.filter((s) => s.role !== "EXPO")
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label>Kitchen course</Label>
+                <Select value={courseId} onValueChange={(v) => setCourseId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(courses ?? []).map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="edit-is-veg" className="cursor-pointer">
+                  Vegetarian
+                </Label>
+                <Switch id="edit-is-veg" checked={isVeg} onCheckedChange={setIsVeg} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="edit-is-vegan" className="cursor-pointer">
+                  Vegan
+                </Label>
+                <Switch id="edit-is-vegan" checked={isVegan} onCheckedChange={setIsVegan} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="edit-is-jain" className="cursor-pointer">
+                  Jain
+                </Label>
+                <Switch id="edit-is-jain" checked={isJain} onCheckedChange={setIsJain} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <Label htmlFor="edit-is-gluten" className="cursor-pointer">
+                  Gluten-free
+                </Label>
+                <Switch id="edit-is-gluten" checked={isGlutenFree} onCheckedChange={setIsGlutenFree} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-spice">Spice</Label>
+                <select
+                  id="edit-spice"
+                  className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                  value={spiceLevel}
+                  onChange={(e) => setSpiceLevel(e.target.value)}
+                >
+                  <option value="NONE">No spice mark</option>
+                  <option value="MILD">Mild</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HOT">Hot</option>
+                  <option value="EXTRA_HOT">Extra hot</option>
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-hsn">HSN / SAC</Label>
-            <Input id="edit-hsn" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} placeholder="2106" maxLength={16} autoComplete="off" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-barcode">Barcode</Label>
-            <Input id="edit-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scanner code" autoComplete="off" />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={soldByWeight} onChange={(e) => setSoldByWeight(e.target.checked)} />
-            Sold by weight. The price is per kilogram.
-          </label>
-          <SizeRows sizes={sizes} onChange={setSizes} />
-          <AddonPicker branchId={branchId} selectedIds={modifierGroupIds} onChange={setModifierGroupIds} />
+          {step === 3 && (
+            <div className="flex max-h-[50vh] flex-col gap-4 overflow-y-auto pr-1">
+              <AllergenFields
+                description={description}
+                onDescriptionChange={setDescription}
+                allergens={allergens}
+                onChange={setAllergens}
+              />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="edit-sku">SKU</Label>
+                  <Input id="edit-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="edit-prep">Prep minutes</Label>
+                  <Input
+                    id="edit-prep"
+                    inputMode="numeric"
+                    value={prepTime}
+                    onChange={(e) => setPrepTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-hsn">HSN / SAC</Label>
+                <Input
+                  id="edit-hsn"
+                  value={hsnCode}
+                  onChange={(e) => setHsnCode(e.target.value)}
+                  placeholder="2106"
+                  maxLength={16}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-barcode">Barcode</Label>
+                <Input
+                  id="edit-barcode"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Scanner code"
+                  autoComplete="off"
+                />
+              </div>
+              <AddonPicker
+                branchId={branchId}
+                selectedIds={modifierGroupIds}
+                onChange={setModifierGroupIds}
+              />
+              <RecordFields branchId={branchId} entity="MENU_ITEM" entityId={item.id} />
+              {canManageInventory && (
+                <StockTrackingSection branchId={branchId} itemId={item.id} isCombo={item.isCombo} />
+              )}
+            </div>
+          )}
 
-          <DialogFooter>
-            <Button type="submit" disabled={updateItem.isPending || uploadImage.isPending || setItemChannelPrices.isPending}>
-              {updateItem.isPending || setItemChannelPrices.isPending ? "Saving…" : "Save changes"}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={goBack}
+              disabled={step === 0 || updateItem.isPending || setItemChannelPrices.isPending}
+            >
+              Back
             </Button>
+            <div className="flex gap-2">
+              {!isLastStep ? (
+                <Button type="button" onClick={goNext} disabled={uploadImage.isPending}>
+                  Next
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={
+                    updateItem.isPending || uploadImage.isPending || setItemChannelPrices.isPending
+                  }
+                >
+                  {updateItem.isPending || setItemChannelPrices.isPending
+                    ? "Saving…"
+                    : "Save changes"}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </form>
-        <RecordFields branchId={branchId} entity="MENU_ITEM" entityId={item.id} />
-        {hasPermission(me?.user, "inventory.manage") && (
-          <StockTrackingSection branchId={branchId} itemId={item.id} isCombo={item.isCombo} />
-        )}
       </DialogContent>
     </Dialog>
   );
