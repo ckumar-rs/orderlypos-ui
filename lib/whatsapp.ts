@@ -1,3 +1,5 @@
+import { paymentMethodLabel } from "@nodedr-restaurant/types";
+
 /** WhatsApp needs country code, no + or leading zero. A 10-digit India mobile gets 91. */
 export function whatsappMeNumber(phone: string): string | null {
   const digits = phone.replace(/\D/g, "");
@@ -18,9 +20,13 @@ export function receiptMessage(input: {
   lines: { name: string; quantity: number; total: string }[];
   total: string;
   payments: { method: string; amount: string }[];
+  /** From restaurant_settings.cash_label */
+  cashLabel?: string;
 }): string {
   const items = input.lines.map((line) => `${line.quantity} x ${line.name} — ${line.total}`).join("\n");
-  const paid = input.payments.map((payment) => `${payment.method} ${payment.amount}`).join(", ");
+  const paid = input.payments
+    .map((payment) => `${paymentMethodLabel(payment.method, input.cashLabel)} ${payment.amount}`)
+    .join(", ");
   return [
     input.restaurant,
     `Order ${input.orderNumber}`,

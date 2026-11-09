@@ -12,16 +12,18 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const META: Record<string, { label: string; Icon: LucideIcon }> = {
-  CASH: { label: "Cash", Icon: Banknote },
-  CARD: { label: "Card", Icon: CreditCard },
-  UPI: { label: "UPI", Icon: QrCode },
-  WALLET: { label: "Wallet", Icon: Wallet },
-  BANK_TRANSFER: { label: "Bank", Icon: Building2 },
-  GIFT_CARD: { label: "Gift card", Icon: Gift },
-  STORE_CREDIT: { label: "Store credit", Icon: Undo2 },
-  OTHER: { label: "Other", Icon: Wallet },
-};
+function methodMeta(cashLabel: string): Record<string, { label: string; Icon: LucideIcon }> {
+  return {
+    CASH: { label: cashLabel, Icon: Banknote },
+    CARD: { label: "Card", Icon: CreditCard },
+    UPI: { label: "UPI", Icon: QrCode },
+    WALLET: { label: "Wallet", Icon: Wallet },
+    BANK_TRANSFER: { label: "Bank", Icon: Building2 },
+    GIFT_CARD: { label: "Gift card", Icon: Gift },
+    STORE_CREDIT: { label: "Store credit", Icon: Undo2 },
+    OTHER: { label: "Other", Icon: Wallet },
+  };
+}
 
 // One-tap payment method picker (replaces the dropdowns): big icon buttons
 // that are quick to hit on a touch screen and show every choice at once.
@@ -30,12 +32,16 @@ export function PaymentMethodButtons<T extends string>({
   value,
   onChange,
   label = "Payment method",
+  cashLabel = "Cash",
 }: {
   methods: readonly T[];
   value: T;
   onChange: (m: T) => void;
   label?: string;
+  /** From restaurant_settings.cash_label */
+  cashLabel?: string;
 }) {
+  const meta = methodMeta(cashLabel);
   return (
     <div
       className={cn("grid gap-2", methods.length > 4 ? "grid-cols-3" : "grid-cols-4")}
@@ -43,7 +49,7 @@ export function PaymentMethodButtons<T extends string>({
       aria-label={label}
     >
       {methods.map((m) => {
-        const { label: text, Icon } = META[m] ?? { label: m, Icon: Wallet };
+        const { label: text, Icon } = meta[m] ?? { label: m, Icon: Wallet };
         const active = value === m;
         return (
           <button

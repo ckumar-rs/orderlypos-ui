@@ -47,6 +47,16 @@ export interface KioskMenu {
   services: { dineIn: boolean; takeaway: boolean };
   upi: { vpa: string; payeeName: string; demo?: boolean } | null;
   demoMode?: boolean;
+  gatewayAvailable?: boolean;
+  pay?: {
+    cash?: boolean;
+    card?: boolean;
+    upi?: boolean;
+    other?: boolean;
+    preferred?: string | null;
+    order?: string[];
+    cashLabel?: string;
+  };
   categories: KioskMenuCategory[];
 }
 export interface KioskOrderResult {
@@ -122,10 +132,15 @@ export const kioskApi = {
       items: { menuItemId: string; quantity: number; modifierIds: string[]; sizeId?: string }[];
     },
   ) => call<KioskOrderResult>(`${token}/order`, { method: "POST", body: JSON.stringify(body) }),
-  demoPay: (token: string, orderNumber: string) =>
-    call<KioskOrderResult>(`${token}/orders/${encodeURIComponent(orderNumber)}/demo-pay`, {
-      method: "POST",
-    }),
+  startPay: (token: string, orderNumber: string) =>
+    call<KioskOrderResult & { checkoutUrl?: string | null }>(
+      `${token}/orders/${encodeURIComponent(orderNumber)}/pay`,
+      { method: "POST" },
+    ),
+  orderStatus: (token: string, orderNumber: string) =>
+    call<KioskOrderResult & { status?: string; checkoutUrl?: string | null }>(
+      `${token}/orders/${encodeURIComponent(orderNumber)}`,
+    ),
   whatsappReceipt: (token: string, body: { requestId: string; phone: string }) =>
     call<{ status: string; error: string | null }>(`${token}/receipt/whatsapp`, {
       method: "POST",

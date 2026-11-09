@@ -96,8 +96,7 @@ export default function OnboardingPage() {
   );
   const progress = steps.length ? ((stepIndex + 1) / steps.length) * 100 : 0;
   const current = steps[stepIndex];
-  const CurrentIcon =
-    current && current.id !== "done" ? STEP_ICONS[current.id] : Store;
+  const CurrentIcon = current ? STEP_ICONS[current.id] : Store;
 
   const finish = (action: "complete" | "skip") => {
     patch.mutate(
@@ -583,9 +582,10 @@ function FloorStep({
     }
     const numbers = Array.from({ length: count }, (_, i) => String(i + 1));
     createFloor.mutate(name, {
-      onSuccess: (floor: { id: string }) => {
+      onSuccess: (floor) => {
+        const floorId = (floor as { id: string }).id;
         bulkTables.mutate(
-          { floorId: floor.id, numbers, capacity: cap, shape: "square" },
+          { floorId, numbers, capacity: cap, shape: "square" },
           {
             onSuccess: () => {
               toast.success("Floor and tables created");
@@ -720,10 +720,10 @@ function MenuStep({
         createCategory.mutate(
           { name: category, sortOrder: 0, isActive: true, showOnWebsite: true },
           {
-            onSuccess: (created: { id: string }) => {
+            onSuccess: (created) => {
               createItem.mutate(
                 {
-                  categoryId: created.id,
+                  categoryId: (created as { id: string }).id,
                   name: dish,
                   price: amount,
                   taxRatePercent: tax,
