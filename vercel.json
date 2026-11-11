@@ -5,5 +5,19 @@
     "BACKEND_URL": "https://orderlypos-backend.onrender.com",
     "NEXT_PUBLIC_WEBSITE_URL": "https://orderlypos-eight.vercel.app",
     "NEXT_PUBLIC_SITE_URL": "https://orderlypos-ui.vercel.app"
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://orderlypos-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/socket.io",
+      "destination": "https://orderlypos-backend.onrender.com/socket.io/"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "https://orderlypos-backend.onrender.com/socket.io/:path*"
+    }
+  ]
 }
