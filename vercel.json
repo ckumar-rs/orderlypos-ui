@@ -12,6 +12,10 @@
       "destination": "https://orderlypos-backend.onrender.com/api/:path*"
     },
     {
+      "source": "/socket.io/",
+      "destination": "https://orderlypos-backend.onrender.com/socket.io/"
+    },
+    {
       "source": "/socket.io",
       "destination": "https://orderlypos-backend.onrender.com/socket.io/"
     },

@@ -6,14 +6,20 @@ import type { NextConfig } from "next";
 // cookie fragility that broke that app's very first version. NOTE: Next
 // bakes the rewrite destination at build time, so in Docker this must come
 // from a build ARG, not a runtime env var (see nodedr-pos memory).
-// Fallback is always local. On Vercel, if BACKEND_URL is unset/local,
-// skip these rewrites so vercel.json can proxy to the public API instead
-// (baking localhost causes DNS_HOSTNAME_RESOLVED_PRIVATE 404s).
-const BACKEND_URL = (
-  process.env.BACKEND_URL ?? "http://localhost:4001"
-).replace(/\/$/, "");
+//
+// Env fallback is always local. On Vercel, a local destination becomes
+// DNS_HOSTNAME_RESOLVED_PRIVATE (login + socket.io 404). Use BACKEND_URL
+// when it is public; otherwise the hosted API (same host as vercel.json).
+const LOCAL_BACKEND = "http://localhost:4001";
+const HOSTED_API = "https://orderlypos-backend.onrender.com";
+const BACKEND_URL = (process.env.BACKEND_URL ?? LOCAL_BACKEND).replace(
+  /\/$/,
+  "",
+);
 const isLocalBackend =
   /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(BACKEND_URL);
+const PROXY_TARGET =
+  process.env.VERCEL && isLocalBackend ? HOSTED_API : BACKEND_URL;
 
 const marketingPages = [
   "",
@@ -27,6 +33,16 @@ const marketingPages = [
   "/terms",
   "/privacy",
 ];
+
+function backendProxies(target: string) {
+  return [
+    { source: "/api/:path*", destination: `${target}/api/:path*` },
+    // socket.io-client hits both /socket.io and /socket.io/ (trailing slash).
+    { source: "/socket.io", destination: `${target}/socket.io/` },
+    { source: "/socket.io/", destination: `${target}/socket.io/` },
+    { source: "/socket.io/:path+", destination: `${target}/socket.io/:path+` },
+  ];
+}
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -45,16 +61,7 @@ const nextConfig: NextConfig = {
   // slash-less form, so Next must not redirect it.
   skipTrailingSlashRedirect: true,
   async rewrites() {
-    if (process.env.VERCEL && isLocalBackend) return [];
-    return [
-      { source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` },
-      // Realtime push (socket.io) goes through the same origin too: in
-      // production only this web server is reachable, never the backend's
-      // own port. socket.io starts with long-polling, which proxies fine.
-      // Literal first: an empty :path* would drop the trailing slash.
-      { source: "/socket.io/", destination: `${BACKEND_URL}/socket.io/` },
-      { source: "/socket.io/:path+", destination: `${BACKEND_URL}/socket.io/:path+` },
-    ];
+    return backendProxies(PROXY_TARGET);
   },
 };
 
