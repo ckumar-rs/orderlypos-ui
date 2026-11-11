@@ -1,3 +1,5 @@
+import type { ManagerOptions, SocketOptions } from "socket.io-client";
+
 // NEXT_PUBLIC_* vars are inlined at build time, so a literal default here
 // would bake in whatever host built the bundle (e.g. "localhost") — every
 // OTHER device on the LAN (another till, a tablet) would then try to reach
@@ -19,4 +21,24 @@ export function resolveWsUrl(): string {
     return window.location.origin;
   }
   return "http://localhost:4001";
+}
+
+function hostedBehindVercelProxy(): boolean {
+  if (typeof window === "undefined") return false;
+  return /\.vercel\.app$/i.test(window.location.hostname);
+}
+
+// Vercel HTTP rewrites can proxy Engine.IO polling to Render, but they do
+// not complete WebSocket upgrades to an external origin. Leave websocket
+// enabled for local/docker (Next proxies WS fine); on *.vercel.app stay on
+// polling so the client does not spam failed wss:// upgrades.
+export function socketIoClientOptions(
+  extra: Partial<ManagerOptions & SocketOptions> = {},
+): Partial<ManagerOptions & SocketOptions> {
+  const vercel = hostedBehindVercelProxy();
+  return {
+    withCredentials: true,
+    ...(vercel ? { transports: ["polling"], upgrade: false } : {}),
+    ...extra,
+  };
 }
