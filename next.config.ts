@@ -6,7 +6,20 @@ import type { NextConfig } from "next";
 // cookie fragility that broke that app's very first version. NOTE: Next
 // bakes the rewrite destination at build time, so in Docker this must come
 // from a build ARG, not a runtime env var (see nodedr-pos memory).
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4001";
+// Fallback is always local. On Vercel, set BACKEND_URL at build time — a
+// local rewrite there returns 404 (DNS_HOSTNAME_RESOLVED_PRIVATE).
+const BACKEND_URL = (
+  process.env.BACKEND_URL ?? "http://localhost:4001"
+).replace(/\/$/, "");
+if (
+  process.env.VERCEL &&
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(BACKEND_URL)
+) {
+  throw new Error(
+    `BACKEND_URL must be a public API URL for Vercel builds (got ${BACKEND_URL}). ` +
+      "Set BACKEND_URL in the Vercel project env (Build) and redeploy.",
+  );
+}
 
 const marketingPages = [
   "",
